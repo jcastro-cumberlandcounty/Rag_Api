@@ -1,58 +1,106 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from typing import List, Dict, Any
 
-import numpy as np
+import fitz  # PyMuPDF
 import faiss
+import numpy as np
 
-from .ollama_client import OllamaClient
-from .pdf_extract import extract_pages
-from .text_chunking import chunk_page_text
-from .store import PolicyStore, StoredChunk
+from app.rag.ollama_client import OllamaClient
+from app.rag.store import PolicyStore
+from app.rag.types import Page, Chunk
 
 
-# -------------------------------
-# Ingestion helpers
-# -------------------------------
+# -------------------------
+# Helpers
+# -------------------------
 
-def build_chunks(
-    policy_id: str,
-    pages: Dict[int, str],
-    max_chars: int = 1200,
-    overlap_chars: int = 200,
-) -> List[StoredChunk]:
+def sanitize_text_for_embedding(text: str, max_chars: int = 4000) -> str:
     """
-    Convert extracted pages into stable, stored chunks.
+    Make PDF-extracted text safe for embedding calls.
+
+    Deterministic steps:
+    - Remove NUL bytes
+    - Remove other control chars (keep newline/tab)
+    - Normalize whitespace
+    - Cap size
     """
-    chunks: List[StoredChunk] = []
+    if not text:
+        return ""
 
-    for page_num in sorted(pages.keys()):
-        page_chunks = chunk_page_text(
-            page_num,
-            pages[page_num],
-            max_chars=max_chars,
-            overlap_chars=overlap_chars,
-        )
+    safe = text.replace("\x00", " ")
 
-        for ch in page_chunks:
-            chunk_id = PolicyStore.stable_chunk_id(
-                policy_id,
-                ch.page,
-                ch.chunk_index,
-                ch.text,
-            )
-            chunks.append(
-                StoredChunk(
-                    chunk_id=chunk_id,
-                    page=ch.page,
-                    chunk_index=ch.chunk_index,
-                    text=ch.text,
+    # Replace control chars (ASCII < 32) except \n and \t
+    safe = "".join(
+        ch if (ch == "\n" or ch == "\t" or ord(ch) >= 32) else " "
+        for ch in safe
+    )
+
+    # Normalize whitespace
+    safe = " ".join(safe.split())
+
+    # Hard cap
+    if len(safe) > max_chars:
+        safe = safe[:max_chars]
+
+    return safe.strip()
+
+
+# -------------------------
+# PDF extraction
+# -------------------------
+
+def extract_pdf_pages(pdf_path: str) -> List[Page]:
+    """Read a PDF and return a list of pages with extracted text."""
+    doc = fitz.open(pdf_path)
+    pages: List[Page] = []
+
+    for i, page in enumerate(doc):
+        text = page.get_text() or ""
+        pages.append(Page(page_num=i + 1, text=text))
+
+    return pages
+
+
+# -------------------------
+# Chunking logic
+# -------------------------
+
+def chunk_pages(
+    pages: List[Page],
+    chunk_size: int = 900,
+    overlap: int = 150,
+) -> List[Chunk]:
+    """Split pages into overlapping character chunks."""
+    chunks: List[Chunk] = []
+
+    for page in pages:
+        text = page.text or ""
+        start = 0
+        chunk_idx = 0
+
+        while start < len(text):
+            end = start + chunk_size
+            chunk_text = text[start:end].strip()
+
+            if chunk_text:
+                chunks.append(
+                    Chunk(
+                        chunk_id=f"p{page.page_num}_c{chunk_idx}",
+                        page=page.page_num,
+                        text=chunk_text,
+                    )
                 )
-            )
+
+            start = end - overlap
+            chunk_idx += 1
 
     return chunks
 
+
+# -------------------------
+# Ingestion pipeline
+# -------------------------
 
 def ingest_policy(
     store: PolicyStore,
@@ -60,145 +108,116 @@ def ingest_policy(
     policy_id: str,
     pdf_path: str,
     embedding_model: str,
-    chunk_max_chars: int = 1200,
-    chunk_overlap_chars: int = 200,
 ) -> Dict[str, Any]:
     """
-    Full ingestion pipeline:
-    PDF -> pages -> chunks -> embeddings -> FAISS index
+    Ingest a policy PDF:
+    - extract pages
+    - chunk text
+    - embed chunks
+    - build + persist FAISS index
+    - write chunk metadata
+
+    Resilient ingest: skips bad chunks but records them.
     """
+    pages = extract_pdf_pages(pdf_path)
+    chunks = chunk_pages(pages)
 
-    # 1) Extract text by page
-    pages = extract_pages(pdf_path)
+    if not chunks:
+        store.write_metadata(
+            policy_id,
+            {
+                "pages": len(pages),
+                "chunks_total": 0,
+                "chunks_embedded": 0,
+                "chunks_failed": 0,
+                "embedding_model": embedding_model,
+                "note": "No extractable text found (possibly scanned PDF).",
+            },
+        )
+        return {"policy_id": policy_id, "pages": len(pages), "chunks": 0, "embedding_model": embedding_model}
 
-    # 2) Build deterministic chunks
-    chunks = build_chunks(
-        policy_id,
-        pages,
-        max_chars=chunk_max_chars,
-        overlap_chars=chunk_overlap_chars,
-    )
-
-    # 3) Create embeddings for each chunk
     vectors: List[List[float]] = []
-    for chunk in chunks:
-        vec = ollama.embed(embedding_model, chunk.text)
+    kept_chunks: List[Chunk] = []
+    failed_chunks: List[Dict[str, Any]] = []
+
+    policy_dir = store.policy_dir(policy_id)
+
+    for ch in chunks:
+        safe_text = sanitize_text_for_embedding(ch.text, max_chars=4000)
+
+        if not safe_text:
+            failed_chunks.append({"page": ch.page, "chunk_id": ch.chunk_id, "error": "Empty after sanitization"})
+            continue
+
+        try:
+            vec = ollama.embed(embedding_model, safe_text)
+        except Exception as e:
+            # Dump failing text for inspection
+            debug_path = policy_dir / f"FAILED_EMBED_{ch.chunk_id}.txt"
+            try:
+                debug_path.write_text(safe_text, encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+            failed_chunks.append({"page": ch.page, "chunk_id": ch.chunk_id, "error": str(e)})
+            continue
+
         vectors.append(vec)
+        kept_chunks.append(ch)
 
-    vectors_np = np.array(vectors, dtype=np.float32)
-
-    # 4) Persist everything to disk
-    store.write_pages(policy_id, pages)
-    store.write_chunks(policy_id, chunks)
-    store.write_faiss_index(policy_id, vectors_np)
-
-    # 5) Save metadata for auditing
-    meta = {
-        "policy_id": policy_id,
-        "created_utc": datetime.now(timezone.utc).isoformat(),
-        "embedding_model": embedding_model,
-        "chunk_max_chars": chunk_max_chars,
-        "chunk_overlap_chars": chunk_overlap_chars,
-        "pages": len(pages),
-        "chunks": len(chunks),
-    }
-
-    store.write_meta(policy_id, meta)
-    return meta
-
-
-# -------------------------------
-# Retrieval + answering
-# -------------------------------
-
-def retrieve_chunks(
-    store: PolicyStore,
-    ollama: OllamaClient,
-    policy_id: str,
-    question: str,
-    embedding_model: str,
-    top_k: int = 6,
-) -> List[Tuple[float, StoredChunk]]:
-    """
-    Retrieve the most relevant chunks for a question.
-    """
-
-    # Load index and chunks
-    index = store.load_faiss_index(policy_id)
-    chunks = store.load_chunks(policy_id)
-
-    # Embed the question
-    q_vec = np.array(
-        [ollama.embed(embedding_model, question)],
-        dtype=np.float32,
-    )
-
-    # Normalize to match cosine-style similarity
-    faiss.normalize_L2(q_vec)
-
-    # Perform vector search
-    scores, indices = index.search(q_vec, top_k)
-
-    results: List[Tuple[float, StoredChunk]] = []
-    for score, idx in zip(scores[0], indices[0]):
-        if 0 <= idx < len(chunks):
-            results.append((float(score), chunks[idx]))
-
-    return results
-
-
-def evidence_is_sufficient(
-    retrieved: List[Tuple[float, StoredChunk]],
-    min_score: float,
-) -> bool:
-    """
-    Decide whether we have enough evidence to answer.
-    """
-    if not retrieved:
-        return False
-
-    best_score = max(score for score, _ in retrieved)
-    return best_score >= min_score
-
-
-def build_prompt(
-    question: str,
-    retrieved: List[Tuple[float, StoredChunk]],
-) -> str:
-    """
-    Build a strict prompt that forbids guessing and requires citations.
-    """
-
-    excerpts = []
-    for i, (score, chunk) in enumerate(retrieved, start=1):
-        snippet = chunk.text[:700].strip()
-        excerpts.append(
-            f"[EXCERPT {i}] (page {chunk.page}, chunk {chunk.chunk_id}, score {score:.3f})\n"
-            f"{snippet}\n"
+    if not vectors:
+        store.write_metadata(
+            policy_id,
+            {
+                "pages": len(pages),
+                "chunks_total": len(chunks),
+                "chunks_embedded": 0,
+                "chunks_failed": len(failed_chunks),
+                "embedding_model": embedding_model,
+                "failed_chunks_sample": failed_chunks[:25],
+                "note": "All chunks failed embedding; see FAILED_EMBED_*.txt files.",
+            },
+        )
+        raise RuntimeError(
+            f"All chunks failed embedding for policy_id={policy_id}. "
+            f"See data/policies/{policy_id}/FAILED_EMBED_*.txt for details."
         )
 
-    joined_excerpts = "\n".join(excerpts)
+    # Build FAISS index (cosine-ish via normalized inner product)
+    arr = np.array(vectors, dtype="float32")
+    dim = arr.shape[1]
 
-    return f"""
-You are a policy question-answering assistant.
+    faiss.normalize_L2(arr)
+    index = faiss.IndexFlatIP(dim)
+    index.add(arr)
 
-RULES (must follow exactly):
-- Use ONLY the policy excerpts provided.
-- Do NOT use outside knowledge.
-- Do NOT guess or infer.
-- If the answer is not explicitly supported, respond exactly:
-  I can’t find that in the policy excerpts provided.
-- If you answer, cite each claim using: (p.<page>, excerpt <n>)
+    store.write_faiss_index(policy_id, index)
+    store.write_chunks(policy_id, kept_chunks)
+    store.write_metadata(
+        policy_id,
+        {
+            "pages": len(pages),
+            "chunks_total": len(chunks),
+            "chunks_embedded": len(kept_chunks),
+            "chunks_failed": len(failed_chunks),
+            "embedding_model": embedding_model,
+            "vector_dim": dim,
+            "failed_chunks_sample": failed_chunks[:25],
+        },
+    )
 
-QUESTION:
-{question}
+    return {
+        "policy_id": policy_id,
+        "pages": len(pages),
+        "chunks": len(kept_chunks),
+        "embedding_model": embedding_model,
+        "chunks_failed": len(failed_chunks),
+    }
 
-POLICY EXCERPTS:
-{joined_excerpts}
 
-Answer now.
-""".strip()
-
+# -------------------------
+# Answer pipeline
+# -------------------------
 
 def answer_question(
     store: PolicyStore,
@@ -207,81 +226,76 @@ def answer_question(
     question: str,
     embedding_model: str,
     chat_model: str,
-    top_k: int,
-    min_score: float,
+    top_k: int = 6,
+    min_score: float = 0.25,
 ) -> Dict[str, Any]:
-    """
-    End-to-end question answering with strict guardrails.
-    """
+    """Retrieve relevant chunks, then answer using ONLY those chunks with citations."""
+    index = store.read_faiss_index(policy_id)
+    chunks = store.read_chunks(policy_id)
 
-    # 1) Retrieve relevant chunks
-    retrieved = retrieve_chunks(
-        store,
-        ollama,
-        policy_id,
-        question,
-        embedding_model,
-        top_k=top_k,
-    )
+    q_text = sanitize_text_for_embedding(question, max_chars=2000)
+    qvec = np.array([ollama.embed(embedding_model, q_text)], dtype="float32")
+    faiss.normalize_L2(qvec)
 
-    # 2) Enforce "not found" if evidence is weak
-    if not evidence_is_sufficient(retrieved, min_score):
-        return {
-            "answer": "I can’t find that in the policy excerpts provided.",
-            "citations": [],
-            "retrieved": [
-                {
-                    "score": score,
-                    "page": chunk.page,
-                    "chunk_id": chunk.chunk_id,
-                    "preview": chunk.text[:200],
-                }
-                for score, chunk in retrieved
-            ],
-        }
+    scores, idxs = index.search(qvec, top_k)
 
-    # 3) Build a grounded prompt
-    prompt = build_prompt(question, retrieved)
+    retrieved = []
+    for score, idx in zip(scores[0].tolist(), idxs[0].tolist()):
+        if idx < 0:
+            continue
+        if score < min_score:
+            continue
 
-    # 4) Ask the LLM
-    response = ollama.generate(
-        model=chat_model,
-        prompt=prompt,
-        temperature=0.0,
-        top_p=1.0,
-        seed=1,
-    )
+        ch = chunks[idx]
+        excerpt = sanitize_text_for_embedding(ch.text, max_chars=300).replace("\n", " ").strip()
 
-    # 5) Hard-enforce the rule in case the model slips
-    if "I can’t find that in the policy excerpts provided." in response:
-        return {
-            "answer": "I can’t find that in the policy excerpts provided.",
-            "citations": [],
-            "retrieved": [],
-        }
-
-    # 6) Build citations for auditability
-    citations = []
-    for i, (score, chunk) in enumerate(retrieved, start=1):
-        citations.append(
+        retrieved.append(
             {
-                "excerpt": i,
-                "page": chunk.page,
-                "chunk_id": chunk.chunk_id,
-                "score": score,
-                "snippet": chunk.text[:220],
+                "chunk_id": ch.chunk_id,
+                "page": ch.page,
+                "score": float(score),
+                "excerpt": excerpt,
+                "text": ch.text,
             }
         )
 
-    return {
-        "answer": response,
-        "citations": citations,
-        "retrieved": [
-            {
-                "score": score,
-                "page": chunk.page,
-                "chunk_id": chunk.chunk_id,
-            }
-            for score, chunk in retrieved
+    if not retrieved:
+        return {
+            "answer": "I can’t find that in the policy excerpts provided.",
+            "citations": [],
+            "retrieved_chunk_ids": [],
+        }
+
+    context_blocks = []
+    for r in retrieved:
+        context_blocks.append(f"[Page {r['page']} | {r['chunk_id']}]\n{r['text']}")
+
+    system = (
+        "You are a compliance assistant for government HR/policy documents.\n"
+        "You MUST answer using ONLY the provided excerpts.\n"
+        "If the answer is not explicitly supported by the excerpts, say:\n"
+        "“I can’t find that in the policy excerpts provided.”\n"
+        "Every factual claim must include a citation in the form (Page X, chunk_id).\n"
+    )
+
+    user = (
+        "Policy excerpts:\n\n"
+        + "\n\n---\n\n".join(context_blocks)
+        + "\n\nQuestion:\n"
+        + question
+        + "\n\nAnswer using only excerpts and cite every claim."
+    )
+
+    answer_text = ollama.chat(
+        chat_model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
         ],
+    )
+
+    return {
+        "answer": answer_text,
+        "citations": [{"page": r["page"], "chunk_id": r["chunk_id"], "excerpt": r["excerpt"]} for r in retrieved],
+        "retrieved_chunk_ids": [r["chunk_id"] for r in retrieved],
     }

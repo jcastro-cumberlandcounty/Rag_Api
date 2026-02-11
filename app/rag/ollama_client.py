@@ -1,72 +1,55 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
-
 import httpx
 
 
 class OllamaClient:
     """
-    Minimal HTTP client for Ollama.
+    Minimal HTTP client for Ollama's local API.
 
-    We keep this small and explicit for auditability:
-    - no frameworks
-    - no hidden retries
-    - no streaming (v1)
+    We keep this small and explicit so behavior is auditable.
     """
 
     def __init__(self, base_url: str = "http://localhost:11434", timeout_s: float = 120.0):
         self.base_url = base_url.rstrip("/")
-        self.timeout_s = timeout_s
+        self.timeout = timeout_s
 
-    def embed(self, model: str, text: str) -> List[float]:
+    def embed(self, model: str, text: str) -> list[float]:
         """
-        Create an embedding vector for the provided text using an Ollama embedding model.
+        Create an embedding vector for the provided text.
+
+        NOTE: Ollama embeddings endpoint expects {"model": "...", "prompt": "..."}.
+        We also surface Ollama's error body if it fails (critical for debugging).
         """
         url = f"{self.base_url}/api/embeddings"
         payload = {"model": model, "prompt": text}
 
-        with httpx.Client(timeout=self.timeout_s) as client:
+        with httpx.Client(timeout=self.timeout) as client:
             resp = client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
 
-        # Ollama returns: {"embedding": [floats], ...}
-        return data["embedding"]
+        if resp.status_code >= 400:
+            # Include Ollama's message to make failures actionable
+            raise RuntimeError(f"Ollama embeddings failed ({resp.status_code}): {resp.text}")
 
-    def generate(
-        self,
-        model: str,
-        prompt: str,
-        temperature: float = 0.0,
-        top_p: float = 1.0,
-        seed: Optional[int] = 1,
-    ) -> str:
+        data = resp.json()
+        emb = data.get("embedding")
+        if not isinstance(emb, list) or not emb:
+            raise RuntimeError(f"Ollama embeddings returned unexpected payload: {data}")
+
+        return emb
+
+    def chat(self, model: str, messages: list[dict]) -> str:
         """
-        Generate a completion from an Ollama model.
-
-        For policy/government use, we default to deterministic-ish settings:
-        - temperature=0
-        - seed fixed (if the backend supports it)
+        Chat with an LLM using Ollama's /api/chat endpoint.
         """
-        url = f"{self.base_url}/api/generate"
-        payload: Dict[str, Any] = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": temperature,
-                "top_p": top_p,
-            },
-        }
+        url = f"{self.base_url}/api/chat"
+        payload = {"model": model, "messages": messages, "stream": False}
 
-        # Some runtimes/models honor seed; if ignored, it's harmless.
-        if seed is not None:
-            payload["options"]["seed"] = seed
-
-        with httpx.Client(timeout=self.timeout_s) as client:
+        with httpx.Client(timeout=self.timeout) as client:
             resp = client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
 
-        return (data.get("response") or "").strip()
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Ollama chat failed ({resp.status_code}): {resp.text}")
+
+        data = resp.json()
+        return data["message"]["content"]

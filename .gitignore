@@ -1,3 +1,10 @@
 .vs/
 bin/
 obj/
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# RAG data
+data/

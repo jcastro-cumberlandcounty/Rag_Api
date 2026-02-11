@@ -10,7 +10,6 @@ from app.rag.ollama_client import OllamaClient
 from app.rag.store import PolicyStore
 from app.rag.rag_core import ingest_policy, answer_question
 
-
 # Create the FastAPI app (this also powers /docs)
 app = FastAPI(
     title="Policy RAG API",
@@ -34,8 +33,8 @@ class AskRequest(BaseModel):
     policy_id: str = Field(..., description="Policy identifier to query")
     question: str = Field(..., description="User question")
 
-    # Models are configurable per request (helps when you upgrade models later)
-    embedding_model: str = Field(default="nomic-embed-text")
+    # Models are configurable per request
+    embedding_model: str = Field(default="nomic-embed-text:latest")
     chat_model: str = Field(default="gpt-oss:20b")
 
     # Retrieval tuning knobs
@@ -53,7 +52,7 @@ def health():
 async def ingest(
     pdf: UploadFile = File(...),
     policy_id: str | None = None,
-    embedding_model: str = "nomic-embed-text",
+    embedding_model: str = "nomic-embed-text:latest",
 ):
     """
     Upload and index a policy PDF.
@@ -77,13 +76,17 @@ async def ingest(
     pdf_path = store.write_pdf(pid, pdf_bytes)
 
     # Run ingestion pipeline
-    meta = ingest_policy(
-        store=store,
-        ollama=ollama,
-        policy_id=pid,
-        pdf_path=str(pdf_path),
-        embedding_model=embedding_model,
-    )
+    try:
+        meta = ingest_policy(
+            store=store,
+            ollama=ollama,
+            policy_id=pid,
+            pdf_path=str(pdf_path),
+            embedding_model=embedding_model,
+        )
+    except Exception as e:
+        # Keep the error message visible while we debug
+        raise HTTPException(status_code=500, detail=str(e))
 
     return IngestResponse(
         policy_id=pid,
@@ -104,7 +107,6 @@ def ask(req: AskRequest):
     - retrieved chunk IDs (for auditing)
     """
 
-    # Ensure policy exists before answering
     policy_dir = Path("data/policies") / req.policy_id
     if not policy_dir.exists():
         raise HTTPException(status_code=404, detail="Unknown policy_id (policy not ingested)")

@@ -1,0 +1,17 @@
+# ============================================================================
+# Accessibility Checking Dependencies
+# ============================================================================
+# Add these to your main requirements.txt file
+#
+# These libraries enable ADA/WCAG compliance checking for various file types
+
+# Word document (.docx) support
+python-docx==1.1.2
+
+# Excel spreadsheet (.xlsx) support
+openpyxl==3.1.2
+
+# Image analysis (for embedded images in documents)
+Pillow==10.2.0
+
+# Note: PyMuPDF (fitz) is already in your requirements for PDF support

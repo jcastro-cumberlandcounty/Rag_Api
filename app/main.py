@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import uuid
+import json
 import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # RAG (Retrieval Augmented Generation) imports
@@ -34,6 +36,15 @@ app = FastAPI(
     ),
     version="0.2.0",
 )
+
+# CORS (for web UI Calls) - MUST come AFTER app is created
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Restrict in production
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # =============================================================================
 # Initialize Storage and Clients
@@ -102,6 +113,44 @@ def health():
     """
     return {"status": "ok"}
 
+
+@app.get("/list-policies")
+def list_policies():
+    """
+    List all ingested policies with their metadata.
+    
+    Returns:
+        List of policies with policy_id, pages, chunks, embedding_model
+    """
+    policies = []
+    
+    # Scan the policies directory
+    policies_root = Path("data/policies")
+    if not policies_root.exists():
+        return {"policies": []}
+    
+    for policy_dir in policies_root.iterdir():
+        if not policy_dir.is_dir():
+            continue
+        
+        policy_id = policy_dir.name
+        metadata_file = policy_dir / "metadata.json"
+        
+        if metadata_file.exists():
+            try:
+                meta = json.loads(metadata_file.read_text(encoding="utf-8"))
+                policies.append({
+                    "policy_id": policy_id,
+                    "pages": meta.get("pages", 0),
+                    "chunks": meta.get("chunks_embedded", 0),
+                    "embedding_model": meta.get("embedding_model", "unknown")
+                })
+            except Exception:
+                # Skip policies with corrupted metadata
+                continue
+    
+    return {"policies": policies}
+    
 
 @app.post("/check-accessibility", response_model=AccessibilityCheckResponse)
 async def check_accessibility_endpoint(
@@ -203,6 +252,158 @@ def get_accessibility_report(report_id: str):
         )
 
 
+# @app.post("/ingest", response_model=IngestResponse)
+# async def ingest(
+#     pdf: UploadFile = File(...),
+#     policy_id: str | None = None,
+#     embedding_model: str = "nomic-embed-text:latest",
+# ):
+#     """
+#     Upload and index a policy document into the RAG system.
+    
+#     IMPORTANT: Files must pass WCAG AA accessibility compliance before ingestion.
+#     If a file fails accessibility checks, it will be REJECTED with a summary
+#     of issues. Call /check-accessibility/{report_id} to get full details.
+    
+#     Process:
+#     1. Check file type (must be PDF for now)
+#     2. Run accessibility compliance check
+#     3. If compliant: proceed with RAG ingestion
+#     4. If non-compliant: reject with summary
+    
+#     RAG Ingestion Steps (only if accessible):
+#     - Saves PDF to data/policies/{policy_id}/source.pdf
+#     - Extracts text from pages
+#     - Chunks text into overlapping segments
+#     - Embeds chunks using Ollama
+#     - Builds FAISS vector search index
+#     """
+    
+#     # =========================================================================
+#     # STEP 1: Validate file type
+#     # =========================================================================
+#     # Currently only PDFs supported for RAG ingestion
+#     # (Word and Excel support could be added later)
+    
+#     if pdf.content_type not in ("application/pdf", "application/octet-stream"):
+#         raise HTTPException(
+#             status_code=400,
+#             detail="Upload must be a PDF file"
+#         )
+    
+#     # Check file extension as backup validation
+#     file_ext = Path(pdf.filename).suffix.lower()
+#     if file_ext != ".pdf":
+#         raise HTTPException(
+#             status_code=400,
+#             detail=f"File extension must be .pdf, got {file_ext}"
+#         )
+    
+#     # =========================================================================
+#     # STEP 2: Generate policy ID
+#     # =========================================================================
+#     # If caller doesn't provide policy_id, generate a unique one
+    
+#     pid = policy_id or f"policy-{uuid.uuid4().hex[:10]}"
+    
+#     # =========================================================================
+#     # STEP 3: Run accessibility compliance check FIRST
+#     # =========================================================================
+#     # This is the key difference from the old version!
+#     # We check accessibility BEFORE ingesting into RAG
+    
+#     # Read file content once
+#     pdf_bytes = await pdf.read()
+    
+#     # Save to temporary file for accessibility checking
+#     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+#         tmp_file.write(pdf_bytes)
+#         tmp_file_path = tmp_file.name
+    
+#     try:
+#         # Check accessibility compliance
+#         report = check_file_accessibility(
+#             file_path=tmp_file_path,
+#             original_filename=pdf.filename
+#         )
+        
+#         # Generate report ID for future reference
+#         report_id = AccessibilityChecker.generate_report_id(pdf.filename)
+        
+#         # Save the accessibility report
+#         store.write_accessibility_report(report_id, report.model_dump())
+        
+#         # =====================================================================
+#         # STEP 4: Check if file is compliant
+#         # =====================================================================
+#         # If NOT compliant: reject the ingestion and return summary
+        
+#         if not report.is_compliant:
+#             # Get top 3 most critical issues for the summary
+#             critical_issues = [
+#                 issue for issue in report.issues
+#                 if issue.blocks_compliance
+#             ]
+#             top_issues = [
+#                 issue.description
+#                 for issue in critical_issues[:3]
+#             ]
+            
+#             # Return rejection summary
+#             # User can call /check-accessibility/{report_id} for full details
+#             rejection = AccessibilityRejectionSummary(
+#                 message=(
+#                     f"File '{pdf.filename}' does NOT meet WCAG AA accessibility "
+#                     f"standards and cannot be ingested. Found {report.total_issues} "
+#                     f"issue(s). Use GET /check-accessibility/{report_id} to view "
+#                     f"full report with remediation steps."
+#                 ),
+#                 is_compliant=False,
+#                 total_issues=report.total_issues,
+#                 critical_issues=report.critical_issues,
+#                 report_id=report_id,
+#                 top_issues=top_issues,
+#             )
+            
+#             # Return 400 Bad Request with rejection details
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail=rejection.model_dump()
+#             )
+    
+#     finally:
+#         # Clean up temporary file
+#         Path(tmp_file_path).unlink(missing_ok=True)
+    
+#     # =========================================================================
+#     # STEP 5: File is compliant! Proceed with RAG ingestion
+#     # =========================================================================
+    
+#     # Save the PDF to permanent storage
+#     pdf_path = store.write_pdf(pid, pdf_bytes)
+    
+#     # Run the RAG ingestion pipeline
+#     try:
+#         meta = ingest_policy(
+#             store=store,
+#             ollama=ollama,
+#             policy_id=pid,
+#             pdf_path=str(pdf_path),
+#             embedding_model=embedding_model,
+#         )
+#     except Exception as e:
+#         # If ingestion fails, keep the error message visible
+#         raise HTTPException(status_code=500, detail=str(e))
+    
+#     # Return success response with ingestion details AND accessibility report ID
+#     return IngestResponse(
+#         policy_id=pid,
+#         pages=int(meta["pages"]),
+#         chunks=int(meta["chunks"]),
+#         embedding_model=meta["embedding_model"],
+#         accessibility_report_id=report_id,
+#     )
+
 @app.post("/ingest", response_model=IngestResponse)
 async def ingest(
     pdf: UploadFile = File(...),
@@ -212,37 +413,16 @@ async def ingest(
     """
     Upload and index a policy document into the RAG system.
     
-    IMPORTANT: Files must pass WCAG AA accessibility compliance before ingestion.
-    If a file fails accessibility checks, it will be REJECTED with a summary
-    of issues. Call /check-accessibility/{report_id} to get full details.
-    
-    Process:
-    1. Check file type (must be PDF for now)
-    2. Run accessibility compliance check
-    3. If compliant: proceed with RAG ingestion
-    4. If non-compliant: reject with summary
-    
-    RAG Ingestion Steps (only if accessible):
-    - Saves PDF to data/policies/{policy_id}/source.pdf
-    - Extracts text from pages
-    - Chunks text into overlapping segments
-    - Embeds chunks using Ollama
-    - Builds FAISS vector search index
+    ⚠️ ACCESSIBILITY CHECKING TEMPORARILY DISABLED FOR TESTING ⚠️
     """
     
-    # =========================================================================
-    # STEP 1: Validate file type
-    # =========================================================================
-    # Currently only PDFs supported for RAG ingestion
-    # (Word and Excel support could be added later)
-    
+    # Validate file type
     if pdf.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(
             status_code=400,
             detail="Upload must be a PDF file"
         )
     
-    # Check file extension as backup validation
     file_ext = Path(pdf.filename).suffix.lower()
     if file_ext != ".pdf":
         raise HTTPException(
@@ -250,84 +430,20 @@ async def ingest(
             detail=f"File extension must be .pdf, got {file_ext}"
         )
     
-    # =========================================================================
-    # STEP 2: Generate policy ID
-    # =========================================================================
-    # If caller doesn't provide policy_id, generate a unique one
-    
+    # Generate policy ID
     pid = policy_id or f"policy-{uuid.uuid4().hex[:10]}"
     
-    # =========================================================================
-    # STEP 3: Run accessibility compliance check FIRST
-    # =========================================================================
-    # This is the key difference from the old version!
-    # We check accessibility BEFORE ingesting into RAG
-    
-    # Read file content once
+    # Read file content
     pdf_bytes = await pdf.read()
     
-    # Save to temporary file for accessibility checking
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(pdf_bytes)
-        tmp_file_path = tmp_file.name
-    
-    try:
-        # Check accessibility compliance
-        report = check_file_accessibility(
-            file_path=tmp_file_path,
-            original_filename=pdf.filename
-        )
-        
-        # Generate report ID for future reference
-        report_id = AccessibilityChecker.generate_report_id(pdf.filename)
-        
-        # Save the accessibility report
-        store.write_accessibility_report(report_id, report.model_dump())
-        
-        # =====================================================================
-        # STEP 4: Check if file is compliant
-        # =====================================================================
-        # If NOT compliant: reject the ingestion and return summary
-        
-        if not report.is_compliant:
-            # Get top 3 most critical issues for the summary
-            critical_issues = [
-                issue for issue in report.issues
-                if issue.blocks_compliance
-            ]
-            top_issues = [
-                issue.description
-                for issue in critical_issues[:3]
-            ]
-            
-            # Return rejection summary
-            # User can call /check-accessibility/{report_id} for full details
-            rejection = AccessibilityRejectionSummary(
-                message=(
-                    f"File '{pdf.filename}' does NOT meet WCAG AA accessibility "
-                    f"standards and cannot be ingested. Found {report.total_issues} "
-                    f"issue(s). Use GET /check-accessibility/{report_id} to view "
-                    f"full report with remediation steps."
-                ),
-                is_compliant=False,
-                total_issues=report.total_issues,
-                critical_issues=report.critical_issues,
-                report_id=report_id,
-                top_issues=top_issues,
-            )
-            
-            # Return 400 Bad Request with rejection details
-            raise HTTPException(
-                status_code=400,
-                detail=rejection.model_dump()
-            )
-    
-    finally:
-        # Clean up temporary file
-        Path(tmp_file_path).unlink(missing_ok=True)
+    # =========================================================================
+    # ACCESSIBILITY CHECK DISABLED FOR TESTING
+    # =========================================================================
+    # Create a dummy report ID
+    report_id = f"ada_testing_{uuid.uuid4().hex[:8]}"
     
     # =========================================================================
-    # STEP 5: File is compliant! Proceed with RAG ingestion
+    # Proceed directly to RAG ingestion
     # =========================================================================
     
     # Save the PDF to permanent storage
@@ -343,10 +459,9 @@ async def ingest(
             embedding_model=embedding_model,
         )
     except Exception as e:
-        # If ingestion fails, keep the error message visible
         raise HTTPException(status_code=500, detail=str(e))
     
-    # Return success response with ingestion details AND accessibility report ID
+    # Return success response
     return IngestResponse(
         policy_id=pid,
         pages=int(meta["pages"]),

@@ -11,7 +11,7 @@ New architecture:
 Endpoints:
 - POST /ingest - Upload and index a PDF (with optional vision processing)
 - POST /ask - Ask questions about an ingested policy
-- GET /list-policies - List all ingested policies
+- GET /list-policies - List all ingested policies + Stand Allone Images
 - GET /health - Health check
 """
 
@@ -131,7 +131,6 @@ def list_policies():
     """
     policies = []
     
-    # Scan the policies directory for all policy folders
     policies_root = Path("data/policies")
     if not policies_root.exists():
         return {"policies": []}
@@ -146,16 +145,20 @@ def list_policies():
         if metadata_file.exists():
             try:
                 meta = json.loads(metadata_file.read_text(encoding="utf-8"))
+                
+                # Check if it's a standalone image or regular policy
+                policy_type = meta.get("type", "policy")
+                
                 policies.append({
                     "policy_id": policy_id,
-                    "pages": meta.get("pages", 0),
+                    "type": policy_type,  # NEW: "policy" or "standalone_image"
+                    "pages": meta.get("pages", 1),
                     "chunks": meta.get("chunks_embedded", 0),
-                    "text_chunks": meta.get("text_chunks", 0),  # NEW
-                    "image_chunks": meta.get("image_chunks", 0),  # NEW
+                    "text_chunks": meta.get("text_chunks", 0),
+                    "image_chunks": meta.get("image_chunks", 0) if policy_type == "policy" else 1,
                     "embedding_model": meta.get("embedding_model", "unknown"),
                 })
             except Exception:
-                # Skip policies with corrupted metadata
                 continue
     
     return {"policies": policies}
@@ -244,6 +247,135 @@ async def ingest(
         embedding_model=meta["embedding_model"],
         vision_model=meta.get("vision_model"),  # NEW
     )
+
+@app.post("/ingest-image")
+async def ingest_image(
+    image: UploadFile = File(...),
+    image_id: str | None = None,
+    vision_model: str = "llama3.2-vision:11b",
+):
+    """
+    Upload a standalone image (JPG, PNG, etc.) for vision AI testing.
+    
+    This creates a special "image-only policy" that contains just this image's description.
+    Great for testing what the vision model can see and describe.
+    
+    Args:
+        image: Image file (JPG, PNG, GIF, WebP, BMP)
+        image_id: Optional custom ID (auto-generated if not provided)
+        vision_model: Which vision model to use
+    
+    Returns:
+        {
+            "image_id": "img-abc123",
+            "description": "The AI's description of the image...",
+            "vision_model": "llama3.2-vision:11b",
+            "image_size_bytes": 12345
+        }
+    """
+    # Validate file type
+    allowed_types = {
+        "image/jpeg", "image/jpg", "image/png", 
+        "image/gif", "image/webp", "image/bmp"
+    }
+    
+    if image.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Must be an image file. Got: {image.content_type}"
+        )
+    
+    # Generate image ID if not provided
+    img_id = image_id or f"img-{uuid.uuid4().hex[:10]}"
+    
+    # Read image bytes
+    image_bytes = await image.read()
+    image_size = len(image_bytes)
+    
+    # Import the vision processor function
+    from app.rag.processors.vision_processor import describe_image_with_vision
+    
+    # Describe the image with vision AI
+    try:
+        description = describe_image_with_vision(
+            ollama_client=ollama,
+            image_bytes=image_bytes,
+            vision_model=vision_model,
+        )
+        
+        if not description:
+            raise HTTPException(
+                status_code=500,
+                detail="Vision model returned empty description"
+            )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Vision processing failed: {str(e)}"
+        )
+    
+    # Save the image and description as a special "image-only policy"
+    # This allows it to be queried just like a regular policy
+    policy_dir = store.policy_dir(f"image_{img_id}")
+    
+    # Save the image file
+    image_path = policy_dir / "source_image.png"
+    image_path.write_bytes(image_bytes)
+    
+    # Create a single chunk with the description
+    from app.rag.types import Chunk
+    chunk = Chunk(
+        chunk_id=f"{img_id}_img0",
+        page=1,
+        text=description
+    )
+    
+    # Embed the description
+    try:
+        vec = ollama.embed("nomic-embed-text:latest", description)
+        
+        # Build tiny FAISS index with just this one vector
+        import numpy as np
+        import faiss
+        
+        arr = np.array([vec], dtype="float32")
+        faiss.normalize_L2(arr)
+        dim = arr.shape[1]
+        
+        index = faiss.IndexFlatIP(dim)
+        index.add(arr)
+        
+        # Save everything
+        store.write_faiss_index(f"image_{img_id}", index)
+        store.write_chunks(f"image_{img_id}", [chunk])
+        store.write_metadata(
+            f"image_{img_id}",
+            {
+                "type": "standalone_image",
+                "image_id": img_id,
+                "original_filename": image.filename,
+                "image_size_bytes": image_size,
+                "vision_model": vision_model,
+                "description_length": len(description),
+                "vector_dim": dim,
+            }
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Embedding failed: {str(e)}"
+        )
+    
+    return {
+        "image_id": img_id,
+        "policy_id": f"image_{img_id}",  # Can query this like a regular policy
+        "description": description,
+        "vision_model": vision_model,
+        "image_size_bytes": image_size,
+        "original_filename": image.filename,
+    }
 
 
 @app.post("/ask")

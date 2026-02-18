@@ -33,6 +33,9 @@ from app.rag.store import PolicyStore
 from app.rag.pipelines.ingestion_pipeline import ingest_policy_with_vision
 from app.rag.pipelines.query_pipeline import answer_question
 
+# Import Planning
+from rag.departments.planning.compliance_api import router as planning_router
+
 
 # =============================================================================
 # FastAPI App Setup
@@ -54,6 +57,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register the planning compliance router
+app.include_router(planning_router)
 
 
 # =============================================================================

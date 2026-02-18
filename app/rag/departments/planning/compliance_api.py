@@ -111,7 +111,7 @@ def _build_response(report: dict, saved_path: Optional[str]) -> dict:
 
 @router.post(
     "/check",
-    summary="Run compliance rules – auto-routes by jurisdiction",
+    summary="Run compliance rules â€“ auto-routes by jurisdiction",
     response_description=(
         "Structured compliance report with PASS / FAIL / WARNING / N/A per rule. "
         "Jurisdiction is determined by the 'jurisdiction' field ('county' or 'wade')."
@@ -208,7 +208,7 @@ def check_compliance_wade(
 
 @router.post(
     "/check/failures-only",
-    summary="Return only FAIL and WARNING items – auto-routes by jurisdiction",
+    summary="Return only FAIL and WARNING items â€“ auto-routes by jurisdiction",
     response_description="Deficiency list: only FAIL and WARNING results returned.",
 )
 def check_compliance_failures(

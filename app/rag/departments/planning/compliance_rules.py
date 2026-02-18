@@ -94,15 +94,15 @@ def _warn(rule_id: str, rule_name: str, section: str, detail: str, fix: str = ""
 
 
 # ==============================================================
-# MAP � Scale & Sheet Size
+# MAP â Scale & Sheet Size
 # ==============================================================
 
 def rule_map_scale(d: SubmissionData) -> RuleResult:
     """
     Scale ranges (ft per inch):
-      Preliminary plan:        50�200  (both County Sec 2203 and Wade Sec 5.1)
-      County final plat:       20�200  (Sec 2503.B checklist)
-      Wade final plat:         50�200  (Wade Sec 5.2)
+      Preliminary plan:        50â200  (both County Sec 2203 and Wade Sec 5.1)
+      County final plat:       20â200  (Sec 2503.B checklist)
+      Wade final plat:         50â200  (Wade Sec 5.2)
     """
     rid, name = "MAP-001", "Map Scale"
     is_final = d.submission_type == "final_plat"
@@ -118,13 +118,13 @@ def rule_map_scale(d: SubmissionData) -> RuleResult:
     if d.scale_feet_per_inch is None:
         return _warn(rid, name, sec,
                      "Scale not extracted from submission.",
-                     f"Confirm plan is drawn at {lo}�{hi} ft per inch.")
+                     f"Confirm plan is drawn at {lo}â{hi} ft per inch.")
     if lo <= d.scale_feet_per_inch <= hi:
         return _pass(rid, name, sec,
-                     f"Scale {d.scale_feet_per_inch} ft/in is within {lo}�{hi} ft/in.",
+                     f"Scale {d.scale_feet_per_inch} ft/in is within {lo}â{hi} ft/in.",
                      d.scale_feet_per_inch)
     return _fail(rid, name, sec,
-                 f"Scale {d.scale_feet_per_inch} ft/in is outside the {lo}�{hi} ft/in range.",
+                 f"Scale {d.scale_feet_per_inch} ft/in is outside the {lo}â{hi} ft/in range.",
                  f"Redraw plan at a scale between {lo} ft/in and {hi} ft/in.",
                  d.scale_feet_per_inch)
 
@@ -139,10 +139,10 @@ def rule_sheet_size(d: SubmissionData) -> RuleResult:
                      "Sheet dimensions not extracted.",
                      "Verify plan is submitted on 24 x 36 inch sheets.")
     if (w == 24 and h == 36) or (w == 36 and h == 24):
-        return _pass(rid, name, sec, f"Sheet size {w}�{h} inches is correct.")
+        return _pass(rid, name, sec, f"Sheet size {w}-{h} inches is correct.")
     return _fail(rid, name, sec,
-                 f"Sheet size {w}�{h} inches does not meet required 24�36 inches.",
-                 "Resubmit on 24�36 inch sheets.")
+                 f"Sheet size {w}-{h} inches does not meet required 24-36 inches.",
+                 "Resubmit on 24-36 inch sheets.")
 
 
 def rule_final_plat_sheet_size(d: SubmissionData) -> RuleResult:
@@ -153,13 +153,13 @@ def rule_final_plat_sheet_size(d: SubmissionData) -> RuleResult:
     if w is None or h is None:
         return _warn(rid, name, sec,
                      "Sheet dimensions not extracted.",
-                     "Verify sheet is 18�24 or 24�36 inches.")
+                     "Verify sheet is 18-24 or 24-36 inches.")
     valid = {(18, 24), (24, 18), (24, 36), (36, 24)}
     if (w, h) in valid:
-        return _pass(rid, name, sec, f"Sheet size {w}�{h} inches is acceptable.")
+        return _pass(rid, name, sec, f"Sheet size {w}-{h} inches is acceptable.")
     return _fail(rid, name, sec,
-                 f"Sheet size {w}�{h} inches. Final plats must be 18�24 or 24�36 inches.",
-                 "Resubmit final plat on 18�24 or 24�36 inch sheets.")
+                 f"Sheet size {w}-{h} inches. Final plats must be 18-24 or 24-36 inches.",
+                 "Resubmit final plat on 18-24 or 24-36 inch sheets.")
 
 
 def rule_topographic_contours(d: SubmissionData) -> RuleResult:
@@ -195,7 +195,7 @@ def rule_final_plat_mylar(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# TTL � Title Block
+# TTL â Title Block
 # ==============================================================
 
 def rule_subdivision_name(d: SubmissionData) -> RuleResult:
@@ -237,7 +237,7 @@ def rule_date_and_north(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# PPL � Preliminary Plan Data Requirements
+# PPL â Preliminary Plan Data Requirements
 # ==============================================================
 
 def rule_overlay_districts_shown(d: SubmissionData) -> RuleResult:
@@ -499,7 +499,7 @@ def rule_soil_scientist_cert(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# LOT � Lot Standards
+# LOT â Lot Standards
 # ==============================================================
 
 def rule_lot_frontage(d: SubmissionData) -> RuleResult:
@@ -546,7 +546,7 @@ def rule_lot_numbering(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# STR � Street Design (shared thresholds, both jurisdictions)
+# STR â Street Design (shared thresholds, both jurisdictions)
 # ==============================================================
 
 def rule_block_length(d: SubmissionData) -> RuleResult:
@@ -601,7 +601,7 @@ def rule_corner_radius(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# CDS � Cul-de-Sac / Hammerhead (County thresholds)
+# CDS â Cul-de-Sac / Hammerhead (County thresholds)
 # ==============================================================
 
 def rule_cul_de_sac_length(d: SubmissionData) -> RuleResult:
@@ -661,20 +661,20 @@ def rule_hammerhead_dimensions(d: SubmissionData) -> RuleResult:
         if all(v is None for v, *_ in checks):
             return _warn(rid, name, sec,
                          "Hammerhead dimensions not extracted.",
-                         "Verify: outside 50�100 ft min, roadway 20�70 ft min, 15 ft radius at T.")
+                         "Verify: outside 50-100 ft min, roadway 20-70 ft min, 15 ft radius at T.")
         return _pass(rid, name, sec, "Hammerhead dimensions meet requirements.")
     return _fail(rid, name, sec,
                  "Hammerhead does not meet dimensions: " + "; ".join(issues) + ".",
-                 "Redesign hammerhead: outside min 50�100 ft, roadway min 20�70 ft, "
+                 "Redesign hammerhead: outside min 50-100 ft, roadway min 20-70 ft, "
                  "15 ft radius at T-intersections.")
 
 
 # ==============================================================
-# PVT � Private Streets (County thresholds)
+# PVT â Private Streets (County thresholds)
 # ==============================================================
 
 def rule_private_street_class_b_max_lots(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "PVT-001", "Class B Private Street � Max Lots Served", "Sec. 2304.C.4.b"
+    rid, name, sec = "PVT-001", "Class B Private Street â Max Lots Served", "Sec. 2304.C.4.b"
     if not d.has_private_streets or d.private_street_class != "B":
         return _na(rid, name, sec)
     if d.class_b_lots_served is None:
@@ -692,7 +692,7 @@ def rule_private_street_class_b_max_lots(d: SubmissionData) -> RuleResult:
 
 
 def rule_private_street_class_c_max_lots(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "PVT-002", "Class C Private Street � Max Lots Served", "Sec. 2304.C.4.c.4"
+    rid, name, sec = "PVT-002", "Class C Private Street â Max Lots Served", "Sec. 2304.C.4.c.4"
     if not d.has_private_streets or d.private_street_class != "C":
         return _na(rid, name, sec)
     if d.class_c_lots_served is None:
@@ -710,7 +710,7 @@ def rule_private_street_class_c_max_lots(d: SubmissionData) -> RuleResult:
 
 
 def rule_private_street_class_a_row(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "PVT-003", "Class A Private Street � ROW Width (no curb/gutter)", "Sec. 2304.C.4.a.6"
+    rid, name, sec = "PVT-003", "Class A Private Street â ROW Width (no curb/gutter)", "Sec. 2304.C.4.a.6"
     if not d.has_private_streets or d.private_street_class != "A":
         return _na(rid, name, sec)
     if d.private_street_row_ft is None:
@@ -763,11 +763,11 @@ def rule_private_street_disclosure(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# UTL � Utilities: Water & Sewer
+# UTL â Utilities: Water & Sewer
 # ==============================================================
 
 def rule_public_water_sewer_2_to_10_lots(d: SubmissionData) -> RuleResult:
-    rid, name = "UTL-001", "Public W/S Connection � 2-10 Lots within 300 ft"
+    rid, name = "UTL-001", "Public W/S Connection â 2-10 Lots within 300 ft"
     sec = "Sec. 2306.A.1.b" if d.jurisdiction == "county" else "Sec. 4.3.d.2"
     lots = d.proposed_lots_or_units or 0
     if not (2 <= lots <= 10):
@@ -781,7 +781,7 @@ def rule_public_water_sewer_2_to_10_lots(d: SubmissionData) -> RuleResult:
     if within:
         if d.water_sewer_type == "public":
             return _pass(rid, name, sec,
-                         f"{lots} lots within 300 ft of public W/S � connection confirmed.")
+                         f"{lots} lots within 300 ft of public W/S â connection confirmed.")
         return _fail(rid, name, sec,
                      f"{lots} lots proposed and public W/S is within 300 ft, but plan "
                      "shows on-site/private utilities.",
@@ -791,7 +791,7 @@ def rule_public_water_sewer_2_to_10_lots(d: SubmissionData) -> RuleResult:
 
 
 def rule_public_water_sewer_11_to_20_lots(d: SubmissionData) -> RuleResult:
-    rid, name = "UTL-002", "Public W/S Connection � 11-20 Lots within 500 ft"
+    rid, name = "UTL-002", "Public W/S Connection â 11-20 Lots within 500 ft"
     sec = "Sec. 2306.A.1.b" if d.jurisdiction == "county" else "Sec. 4.3.d.2"
     lots = d.proposed_lots_or_units or 0
     if not (11 <= lots <= 20):
@@ -805,7 +805,7 @@ def rule_public_water_sewer_11_to_20_lots(d: SubmissionData) -> RuleResult:
     if within:
         if d.water_sewer_type == "public":
             return _pass(rid, name, sec,
-                         f"{lots} lots within 500 ft of public W/S � connection confirmed.")
+                         f"{lots} lots within 500 ft of public W/S â connection confirmed.")
         return _fail(rid, name, sec,
                      f"{lots} lots proposed and public W/S is within 500 ft, but plan "
                      "shows on-site/private utilities.",
@@ -815,7 +815,7 @@ def rule_public_water_sewer_11_to_20_lots(d: SubmissionData) -> RuleResult:
 
 
 def rule_public_water_sewer_over_20_lots(d: SubmissionData) -> RuleResult:
-    rid, name = "UTL-003", "Public W/S Connection � >20 Lots in SSA / >2 units/acre"
+    rid, name = "UTL-003", "Public W/S Connection â >20 Lots in SSA / >2 units/acre"
     sec = "Sec. 2306.A.1.b" if d.jurisdiction == "county" else "Sec. 4.3.d.2"
     lots    = d.proposed_lots_or_units or 0
     density = d.density_units_per_acre
@@ -886,7 +886,7 @@ def rule_utility_easement(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# FIR � Fire Hydrants
+# FIR â Fire Hydrants
 # ==============================================================
 
 def rule_fire_hydrant_spacing(d: SubmissionData) -> RuleResult:
@@ -949,7 +949,7 @@ def rule_fire_marshal_acceptance(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# SWK � Sidewalks (County thresholds)
+# SWK â Sidewalks (County thresholds)
 # ==============================================================
 
 def rule_sidewalk_required(d: SubmissionData) -> RuleResult:
@@ -990,11 +990,11 @@ def rule_sidewalk_dimensions(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# REC � Recreation Area (County: 800 sq ft per dwelling unit)
+# REC â Recreation Area (County: 800 sq ft per dwelling unit)
 # ==============================================================
 
 def rule_recreation_area(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "REC-001", "Recreation Area � Min 800 sq ft per Dwelling Unit (County)", "Sec. 2308.A"
+    rid, name, sec = "REC-001", "Recreation Area â Min 800 sq ft per Dwelling Unit (County)", "Sec. 2308.A"
     units = d.dwelling_units
     if units is None or units == 0:
         return _na(rid, name, sec)
@@ -1007,7 +1007,7 @@ def rule_recreation_area(d: SubmissionData) -> RuleResult:
     if d.recreation_area_sqft >= required:
         return _pass(rid, name, sec,
                      f"Recreation area {d.recreation_area_sqft:,} sq ft >= "
-                     f"{required:,} sq ft required ({units} units � 800 sq ft).",
+                     f"{required:,} sq ft required ({units} units - 800 sq ft).",
                      d.recreation_area_sqft)
     return _fail(rid, name, sec,
                  f"Recreation area {d.recreation_area_sqft:,} sq ft < {required:,} sq ft required.",
@@ -1017,7 +1017,7 @@ def rule_recreation_area(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# SWM � Stormwater
+# SWM â Stormwater
 # ==============================================================
 
 def rule_stormwater_permit(d: SubmissionData) -> RuleResult:
@@ -1083,7 +1083,7 @@ def rule_stormwater_hoa_access(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# DRN � Drainage Easement
+# DRN â Drainage Easement
 # ==============================================================
 
 def rule_drainage_easement(d: SubmissionData) -> RuleResult:
@@ -1111,7 +1111,7 @@ def rule_drainage_easement(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# ENV � Environmental / Special Overlays
+# ENV â Environmental / Special Overlays
 # ==============================================================
 
 def rule_sfha_boundary(d: SubmissionData) -> RuleResult:
@@ -1231,7 +1231,7 @@ def rule_mia_applicability(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# FPL � Final Plat Certificates & Disclosures (County)
+# FPL â Final Plat Certificates & Disclosures (County)
 # ==============================================================
 
 def rule_final_plat_conforms_to_prelim(d: SubmissionData) -> RuleResult:
@@ -1338,7 +1338,7 @@ def rule_final_plat_plat_review_officer(d: SubmissionData) -> RuleResult:
         return _fail(rid, name, sec,
                      "Plat Review Officer certification space missing from final plat.",
                      "Add Plat Review Officer certification block: 'STATE OF NORTH CAROLINA "
-                     "COUNTY OF CUMBERLAND � I, [name], Plat Review Officer of Cumberland "
+                     "COUNTY OF CUMBERLAND â I, [name], Plat Review Officer of Cumberland "
                      "County, certify that the plat to which this certificate is affixed meets "
                      "all statutory requirements for recording.' per Sec. 2503.F.")
     return _warn(rid, name, sec,
@@ -1426,7 +1426,7 @@ def rule_final_plat_ccr_docs(d: SubmissionData) -> RuleResult:
 # --- WAD-001: Town Water Required for All Development ---
 
 def rule_wade_town_water_required(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-001", "Town Water Required � All Wade Development", "Sec. 3.14"
+    rid, name, sec = "WAD-001", "Town Water Required â All Wade Development", "Sec. 3.14"
     if d.water_sewer_type == "public":
         return _pass(rid, name, sec,
                      "Town water connection indicated. Meets Wade Sec. 3.14 requirement.")
@@ -1470,7 +1470,7 @@ def rule_wade_curb_gutter(d: SubmissionData) -> RuleResult:
 # --- WAD-003: Street Base Course ---
 
 def rule_wade_street_base(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-003", "Street Base Course � 4 inch ABC Stone Min", "Sec. 4.1.b"
+    rid, name, sec = "WAD-003", "Street Base Course â 4 inch ABC Stone Min", "Sec. 4.1.b"
     if d.submission_type == "final_plat":
         return _na(rid, name, sec)
     if d.street_base_depth_in is None:
@@ -1492,7 +1492,7 @@ def rule_wade_street_base(d: SubmissionData) -> RuleResult:
 # --- WAD-004: Street Surface Course ---
 
 def rule_wade_street_surface(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-004", "Street Surface Course � 2 inch I-2 Asphalt Min", "Sec. 4.1.c"
+    rid, name, sec = "WAD-004", "Street Surface Course â 2 inch I-2 Asphalt Min", "Sec. 4.1.c"
     if d.submission_type == "final_plat":
         return _na(rid, name, sec)
     if d.street_surface_depth_in is None:
@@ -1514,7 +1514,7 @@ def rule_wade_street_surface(d: SubmissionData) -> RuleResult:
 # --- WAD-005: Street ROW Minimum ---
 
 def rule_wade_street_row(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-005", "Street ROW � Min 50 ft (80 ft if Divided)", "Sec. 3.17.b"
+    rid, name, sec = "WAD-005", "Street ROW â Min 50 ft (80 ft if Divided)", "Sec. 3.17.b"
     if d.street_row_ft is None:
         return _warn(rid, name, sec,
                      "Street ROW width not extracted.",
@@ -1536,7 +1536,7 @@ def rule_wade_street_row(d: SubmissionData) -> RuleResult:
 # --- WAD-006: Wade Cul-de-Sac Max Length (800 ft) ---
 
 def rule_wade_cul_de_sac_length(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-006", "Cul-de-Sac Maximum Length (Wade � 800 ft)", "Sec. 3.17.c"
+    rid, name, sec = "WAD-006", "Cul-de-Sac Maximum Length (Wade â 800 ft)", "Sec. 3.17.c"
     if d.has_cul_de_sac is False:
         return _na(rid, name, sec)
     if d.cul_de_sac_length_ft is None:
@@ -1557,7 +1557,7 @@ def rule_wade_cul_de_sac_length(d: SubmissionData) -> RuleResult:
 # --- WAD-007: Wade Cul-de-Sac Turnaround Dimensions (roadway 80 ft) ---
 
 def rule_wade_cul_de_sac_dimensions(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-007", "Cul-de-Sac Turnaround Dimensions (Wade � 80 ft roadway)", "Sec. 3.17.c"
+    rid, name, sec = "WAD-007", "Cul-de-Sac Turnaround Dimensions (Wade â 80 ft roadway)", "Sec. 3.17.c"
     if d.has_cul_de_sac is False:
         return _na(rid, name, sec)
     issues = []
@@ -1584,7 +1584,7 @@ def rule_wade_cul_de_sac_dimensions(d: SubmissionData) -> RuleResult:
 # --- WAD-008: Private Street ROW 60 ft ---
 
 def rule_wade_private_street_row(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-008", "Private Street � 60 ft ROW / 20 ft Pavement (Wade)", "Sec. 4.2.c"
+    rid, name, sec = "WAD-008", "Private Street â 60 ft ROW / 20 ft Pavement (Wade)", "Sec. 4.2.c"
     if not d.has_private_streets:
         return _na(rid, name, sec)
     if d.private_street_row_ft is None:
@@ -1606,7 +1606,7 @@ def rule_wade_private_street_row(d: SubmissionData) -> RuleResult:
 # --- WAD-009: Private Street Engineer Certification ---
 
 def rule_wade_private_street_engineer_cert(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-009", "Private Street � Registered Engineer Certification", "Sec. 4.2.d"
+    rid, name, sec = "WAD-009", "Private Street â Registered Engineer Certification", "Sec. 4.2.d"
     if not d.has_private_streets:
         return _na(rid, name, sec)
     if d.submission_type != "final_plat":
@@ -1631,7 +1631,7 @@ def rule_wade_private_street_engineer_cert(d: SubmissionData) -> RuleResult:
 # --- WAD-010: Sidewalk on All New Streets (5 ft wide) ---
 
 def rule_wade_sidewalk_all_streets(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-010", "Sidewalk Required � All New Streets, One Side (Wade)", "Sec. 4.1.h"
+    rid, name, sec = "WAD-010", "Sidewalk Required â All New Streets, One Side (Wade)", "Sec. 4.1.h"
     if d.submission_type != "preliminary_plan":
         return _na(rid, name, sec)
     if d.sidewalk_all_new_streets_shown is True:
@@ -1652,7 +1652,7 @@ def rule_wade_sidewalk_all_streets(d: SubmissionData) -> RuleResult:
 # --- WAD-011: Sidewalk Dimensions (Wade: 5 ft = 60 in) ---
 
 def rule_wade_sidewalk_dimensions(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-011", "Sidewalk Dimensions � 5 ft Min Width (Wade)", "Sec. 4.1.h"
+    rid, name, sec = "WAD-011", "Sidewalk Dimensions â 5 ft Min Width (Wade)", "Sec. 4.1.h"
     if d.sidewalk_shown is False:
         return _na(rid, name, sec)
     issues = []
@@ -1673,7 +1673,7 @@ def rule_wade_sidewalk_dimensions(d: SubmissionData) -> RuleResult:
 # --- WAD-012: Wade Recreation Area (standard subdivision, floodplain tiers) ---
 
 def rule_wade_recreation_area(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "WAD-012", "Recreation Area � Wade Standard Subdivision (Sec. 3.13.1)", "Sec. 3.13.1"
+    rid, name, sec = "WAD-012", "Recreation Area â Wade Standard Subdivision (Sec. 3.13.1)", "Sec. 3.13.1"
     if d.development_type != "subdivision":
         return _na(rid, name, sec)
 
@@ -1698,8 +1698,8 @@ def rule_wade_recreation_area(d: SubmissionData) -> RuleResult:
     if d.recreation_area_sqft is None:
         return _warn(rid, name, sec,
                      f"Required recreation area is {required:,} sq ft "
-                     f"({above_fp} lots above FP � 500 + {in_fp} lots in FP � 1,000 + "
-                     f"{water_bod} on water � 2,000). Recreation area not labeled on plan.",
+                     f"({above_fp} lots above FP - 500 + {in_fp} lots in FP - 1,000 + "
+                     f"{water_bod} on water - 2,000). Recreation area not labeled on plan.",
                      "Label and dimension recreation area on plan to demonstrate compliance.")
 
     if d.recreation_area_sqft >= required:
@@ -1740,11 +1740,11 @@ def rule_wade_final_plat_recording_deadline(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# MHP � Mobile Home Park Rules (Wade Sec. 3.23)
+# MHP â Mobile Home Park Rules (Wade Sec. 3.23)
 # ==============================================================
 
 def rule_wade_mhp_lot_area(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "MHP-001", "Mobile Home Park � Minimum Lot Area 1 Acre", "Sec. 3.23.a"
+    rid, name, sec = "MHP-001", "Mobile Home Park â Minimum Lot Area 1 Acre", "Sec. 3.23.a"
     if d.development_type != "mobile_home_park":
         return _na(rid, name, sec)
     if d.mhp_min_lot_area_acres is None:
@@ -1764,7 +1764,7 @@ def rule_wade_mhp_lot_area(d: SubmissionData) -> RuleResult:
 
 
 def rule_wade_mhp_density(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "MHP-002", "Mobile Home Park � Max Density 8 Units/Acre", "Sec. 3.23.a"
+    rid, name, sec = "MHP-002", "Mobile Home Park â Max Density 8 Units/Acre", "Sec. 3.23.a"
     if d.development_type != "mobile_home_park":
         return _na(rid, name, sec)
     if d.mhp_density_per_acre is None:
@@ -1815,7 +1815,7 @@ def rule_wade_mhp_unit_separation(d: SubmissionData) -> RuleResult:
 
 
 def rule_wade_mhp_recreation(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "MHP-004", "Mobile Home Park � Recreation Area", "Sec. 3.23.d.5"
+    rid, name, sec = "MHP-004", "Mobile Home Park â Recreation Area", "Sec. 3.23.d.5"
     if d.development_type != "mobile_home_park":
         return _na(rid, name, sec)
     units = d.mhp_units or 0
@@ -1844,7 +1844,7 @@ def rule_wade_mhp_recreation(d: SubmissionData) -> RuleResult:
     issues = []
     if not total_ok:
         issues.append(f"{d.mhp_recreation_area_sqft:,} sq ft < {required_per_unit:,} sq ft "
-                      f"(500 sq ft � {units} units) required")
+                      f"(500 sq ft - {units} units) required")
     if not site_ok:
         issues.append(f"{d.mhp_recreation_area_sqft:,} sq ft < {min_site:,} sq ft "
                       f"minimum single-site requirement")
@@ -1856,7 +1856,7 @@ def rule_wade_mhp_recreation(d: SubmissionData) -> RuleResult:
 
 
 def rule_wade_mhp_perimeter_buffer(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "MHP-005", "Mobile Home Park � Perimeter Buffer 15 ft", "Sec. 3.23.d.6"
+    rid, name, sec = "MHP-005", "Mobile Home Park â Perimeter Buffer 15 ft", "Sec. 3.23.d.6"
     if d.development_type != "mobile_home_park":
         return _na(rid, name, sec)
     if d.mhp_perimeter_buffer_ft is None:
@@ -1877,7 +1877,7 @@ def rule_wade_mhp_perimeter_buffer(d: SubmissionData) -> RuleResult:
 
 
 def rule_wade_mhp_pedestrian_paths(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "MHP-006", "Mobile Home Park � Internal Pedestrian Paths 3 ft Min", "Sec. 3.23.d.8"
+    rid, name, sec = "MHP-006", "Mobile Home Park â Internal Pedestrian Paths 3 ft Min", "Sec. 3.23.d.8"
     if d.development_type != "mobile_home_park":
         return _na(rid, name, sec)
     if d.mhp_pedestrian_path_width_ft is None:
@@ -1899,11 +1899,11 @@ def rule_wade_mhp_pedestrian_paths(d: SubmissionData) -> RuleResult:
 
 
 # ==============================================================
-# GRP � Group Development Recreation (Wade Sec. 3.21.k)
+# GRP â Group Development Recreation (Wade Sec. 3.21.k)
 # ==============================================================
 
 def rule_wade_group_dev_recreation(d: SubmissionData) -> RuleResult:
-    rid, name, sec = "GRP-001", "Group Development � Recreation Area (Wade Sec. 3.21.k)", "Sec. 3.21.k"
+    rid, name, sec = "GRP-001", "Group Development â Recreation Area (Wade Sec. 3.21.k)", "Sec. 3.21.k"
     if d.development_type != "group_development":
         return _na(rid, name, sec)
     units = d.group_dev_units or 0
@@ -1924,7 +1924,7 @@ def rule_wade_group_dev_recreation(d: SubmissionData) -> RuleResult:
     if d.group_dev_recreation_sqft >= required_total:
         return _pass(rid, name, sec,
                      f"Group dev recreation {d.group_dev_recreation_sqft:,} sq ft >= "
-                     f"{required_total:,} sq ft required ({units} units � 500 sq ft).",
+                     f"{required_total:,} sq ft required ({units} units - 500 sq ft).",
                      d.group_dev_recreation_sqft)
     return _fail(rid, name, sec,
                  f"Group dev recreation {d.group_dev_recreation_sqft:,} sq ft < "
@@ -2050,7 +2050,7 @@ ALL_WADE_RULES: List[RuleFunc] = [
     rule_wade_curb_gutter,
     rule_wade_street_base,
     rule_wade_street_surface,
-    # Cul-de-sac (Wade overrides � stricter limits)
+    # Cul-de-sac (Wade overrides â stricter limits)
     rule_wade_cul_de_sac_length,
     rule_wade_cul_de_sac_dimensions,
     rule_hammerhead_dimensions,          # same dimensions
@@ -2092,7 +2092,7 @@ ALL_WADE_RULES: List[RuleFunc] = [
     rule_retention_basin_fence,
     # Drainage (same)
     rule_drainage_easement,
-    # Environmental (same � all in Cumberland County)
+    # Environmental (same â all in Cumberland County)
     rule_sfha_boundary,
     rule_sfha_disclosure,
     rule_riparian_buffer,

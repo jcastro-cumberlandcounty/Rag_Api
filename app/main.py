@@ -34,7 +34,7 @@ from app.rag.pipelines.ingestion_pipeline import ingest_policy_with_vision
 from app.rag.pipelines.query_pipeline import answer_question
 
 # Import Planning
-from rag.departments.planning.compliance_api import router as planning_router
+from app.rag.departments.planning.compliance_api import router as planning_router
 
 
 # =============================================================================

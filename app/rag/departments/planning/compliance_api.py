@@ -53,6 +53,7 @@ from .compliance_rules import (
     ALL_WADE_RULES,
 )
 from .plat_vision_extractor import extract_from_plat_image
+from .session_store import create_session, new_session_id, check_permissions
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,22 @@ def _build_response(report: dict, saved_path: Optional[str]) -> dict:
         "checked_at": datetime.now().isoformat(),
     }
     return report
+
+def _content_type_to_ext(content_type: str) -> str:
+    """
+    Map an HTTP content-type header to a file extension for session storage.
+    Falls back to '.png' for unknown types.
+    """
+    mapping = {
+        "image/png":  ".png",
+        "image/jpeg": ".jpg",
+        "image/jpg":  ".jpg",
+        "image/tiff": ".tiff",
+        "image/bmp":  ".bmp",
+        "image/webp": ".webp",
+        "application/pdf": ".pdf",
+    }
+    return mapping.get(content_type.lower(), ".png")
 
 
 # ==================================================================
@@ -614,7 +631,30 @@ async def check_plat_image(
             report=report,
         )
 
-    return _build_response(report, saved_path)
+    # --- Auto-create session ------------------------------------------------
+    session_id = new_session_id()
+    image_ext  = _content_type_to_ext(plat_image.content_type or "image/png")
+    try:
+        create_session(
+            session_id=session_id,
+            report=report,
+            planner_observations=vision_result["planner_observations"],
+            extracted_fields=vision_result["extracted_fields"],
+            image_bytes=image_bytes,
+            image_ext=image_ext,
+            submission_type=submission_type,
+            jurisdiction=jurisdiction,
+            source_filename=plat_image.filename or "unknown",
+        )
+        logger.info("Auto-created session %s for plat image %s", session_id, plat_image.filename)
+    except Exception as exc:
+        # Session creation failure is non-fatal  -- report is still returned
+        logger.error("Failed to auto-create session: %s", exc)
+        session_id = None
+
+    response = _build_response(report, saved_path)
+    response["session_id"] = session_id
+    return response
 
 
 @router.post(
@@ -648,6 +688,7 @@ async def check_plat_image_failures(
     )
 
     return {
+        "session_id":           full.get("session_id"),
         "jurisdiction":         full["jurisdiction"],
         "overall_status":       full["overall_status"],
         "summary": {

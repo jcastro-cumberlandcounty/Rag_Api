@@ -35,7 +35,7 @@ from app.rag.pipelines.query_pipeline import answer_question
 
 # Import Planning
 from app.rag.departments.planning.compliance_api import router as planning_router
-
+from app.rag.departments.planning.plat_chat_api import router as plat_chat_router
 
 # =============================================================================
 # FastAPI App Setup
@@ -60,7 +60,7 @@ app.add_middleware(
 
 # Register the planning compliance router
 app.include_router(planning_router)
-
+app.include_router(plat_chat_router)
 
 # =============================================================================
 # Initialize Storage and Clients (created once when server starts)
@@ -70,6 +70,19 @@ store = PolicyStore(root_dir="data/policies")
 ollama = OllamaClient(base_url="http://localhost:11434")
 app.state.ollama = ollama  # Make Ollama client available in app state for processors
 
+# Session directory health check at startup
+from app.rag.departments.planning.session_store import check_permissions as _chk_sessions
+
+@app.on_event("startup")
+async def _check_session_store():
+    result = _chk_sessions()
+    if result["writable"]:
+        print(f"[startup] Sessions directory ready: {result['session_dir']}")
+    else:
+        print(
+            f"[startup] WARNING: Sessions directory not writable: "
+            f"{result['session_dir']} -- error: {result['error']}"
+        )
 
 # =============================================================================
 # Response Models (define the shape of API responses)
@@ -106,13 +119,13 @@ class AskRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    """
-    Health check endpoint.
-    
-    Returns:
-        Simple status indicator (doesn't test LLM or PDF processing)
-    """
-    return {"status": "ok", "version": "0.3.0"}
+    from app.rag.departments.planning.session_store import check_permissions
+    session_status = check_permissions()
+    return {
+        "status": "ok",
+        "version": "0.3.0",
+        "sessions": session_status,
+    }
 
 
 @app.get("/list-policies")
@@ -439,11 +452,11 @@ def ask(req: AskRequest):
 """
 FILE STRUCTURE CREATED BY THIS API:
 
-data/policies/{policy_id}/
-├── source.pdf           # Original uploaded PDF
-├── chunks.json          # All chunks (text + image descriptions)
-├── metadata.json        # Ingestion statistics and model info
-└── index.faiss          # Vector search index
+-data/policies/{policy_id}/
+-source.pdf           # Original uploaded PDF
+-chunks.json          # All chunks (text + image descriptions)
+-metadata.json        # Ingestion statistics and model info
+-index.faiss          # Vector search index
 
 METADATA EXAMPLE:
 {

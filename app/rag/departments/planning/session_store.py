@@ -4,7 +4,7 @@ session_store.py   -  Plat Review Session Store
 Manages persistent session data for the AI-powered plat review workflow.
 
 Each session lives in a dedicated folder on the VM:
-    /sessions/{session_id}/
+    data/sessions/{session_id}/
         session.json       - compliance report + extracted fields + observations
         plat.{ext}         - original uploaded plat image or PDF
 
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # Base directory for all sessions
 # Can be overridden via PLAT_SESSION_DIR environment variable for flexibility
 # ---------------------------------------------------------------------------
-_DEFAULT_SESSION_DIR = Path("/sessions")
+_DEFAULT_SESSION_DIR = Path("data/sessions")
 SESSION_DIR = Path(os.environ.get("PLAT_SESSION_DIR", _DEFAULT_SESSION_DIR))
 
 
@@ -115,7 +115,7 @@ def create_session(
 
     Raises
     ------
-    PermissionError  if the /sessions directory is not writable.
+    PermissionError  if the data/sessions directory is not writable.
     OSError          for other filesystem problems.
     """
     _ensure_session_dir_exists(session_id)

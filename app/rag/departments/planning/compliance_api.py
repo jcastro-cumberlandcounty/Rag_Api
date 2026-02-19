@@ -54,7 +54,7 @@ from .compliance_rules import (
 )
 from .plat_vision_extractor import extract_from_plat_image
 from .session_store import create_session, new_session_id, check_permissions
-
+from .session_store import create_session, new_session_id
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/compliance", tags=["Planning - Compliance Checking"])
@@ -169,17 +169,14 @@ def _build_response(report: dict, saved_path: Optional[str]) -> dict:
     return report
 
 def _content_type_to_ext(content_type: str) -> str:
-    """
-    Map an HTTP content-type header to a file extension for session storage.
-    Falls back to '.png' for unknown types.
-    """
+    """Map an HTTP content-type header to a file extension for session storage."""
     mapping = {
-        "image/png":  ".png",
-        "image/jpeg": ".jpg",
-        "image/jpg":  ".jpg",
-        "image/tiff": ".tiff",
-        "image/bmp":  ".bmp",
-        "image/webp": ".webp",
+        "image/png":       ".png",
+        "image/jpeg":      ".jpg",
+        "image/jpg":       ".jpg",
+        "image/tiff":      ".tiff",
+        "image/bmp":       ".bmp",
+        "image/webp":      ".webp",
         "application/pdf": ".pdf",
     }
     return mapping.get(content_type.lower(), ".png")
@@ -612,7 +609,29 @@ async def check_plat_image(
     else:
         results = run_county_rules(submission_data)
 
-    report = build_report(results)
+    # Create session so /chat-plat can reload context on every chat turn
+    session_id = new_session_id()
+    image_ext  = _content_type_to_ext(plat_image.content_type or "image/png")
+    try:
+        create_session(
+            session_id           = session_id,
+            report               = report,
+            planner_observations = vision_result["planner_observations"],
+            extracted_fields     = vision_result["extracted_fields"],
+            image_bytes          = image_bytes,
+            image_ext            = image_ext,
+            submission_type      = submission_type,
+            jurisdiction         = jurisdiction,
+            source_filename      = plat_image.filename or "unknown",
+        )
+        logger.info("Session created: %s for file: %s", session_id, plat_image.filename)
+    except Exception as exc:
+        logger.error("Session creation failed — chat will be unavailable: %s", exc)
+        session_id = None
+
+    response = _build_response(report, saved_path)
+    response["session_id"] = session_id
+    return response
 
     # Attach vision-specific outputs
     report["jurisdiction"]         = jurisdiction

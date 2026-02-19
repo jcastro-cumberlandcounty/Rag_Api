@@ -45,7 +45,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .ollama_client import OllamaClient
 from .session_store import load_session, load_session_image, session_exists
 
 logger = logging.getLogger(__name__)
@@ -80,7 +79,8 @@ class ChatResponse(BaseModel):
 # Dependency injection  - reuse the app-level OllamaClient
 # ---------------------------------------------------------------------------
 
-def get_ollama(request) -> OllamaClient:  # type: ignore[type-arg]
+def get_ollama(request):
+    """Return the shared OllamaClient from app.state (set in main.py at startup)."""
     return request.app.state.ollama
 
 
@@ -237,7 +237,7 @@ async def chat_plat(
 
     **Recommended Blazor HttpClient timeout**: 120 seconds.
     """
-    ollama: OllamaClient = get_ollama(request)
+    ollama = get_ollama(request)
 
     # ---- Validate session --------------------------------------------------
     if not session_exists(body.session_id):

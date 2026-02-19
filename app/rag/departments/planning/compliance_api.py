@@ -14,12 +14,22 @@ Endpoints:
   POST /compliance/check/county         -> always runs County rules
   POST /compliance/check/wade           -> always runs Wade rules
   POST /compliance/check/failures-only  -> auto-routes, returns FAILs + WARNINGs only
+  POST /compliance/check/compare        -> side-by-side County vs Wade comparison
   GET  /compliance/jurisdictions         -> lists available jurisdictions and rule counts
+  GET  /compliance/submissions           -> lists saved test submissions on the VM
+
+  -- Plat Image Vision Endpoints (NEW) --
+  POST /compliance/check-plat-image              -> upload plat image, AI extracts fields,
+                                                    runs full compliance report
+  POST /compliance/check-plat-image/failures-only -> same but returns only FAILs + WARNINGs
+                                                     + planner observations
 
 Test Submission Saving:
   Completed compliance checks are saved as JSON to:
     /submissions/{jurisdiction}/{submission_type}/{timestamp}_{subdivision_name}.json
   Both the raw request data and the compliance report are saved together.
+  Plat image results are saved under:
+    /submissions/{jurisdiction}/{submission_type}/plat_images/{timestamp}_{filename}.json
 """
 
 from __future__ import annotations
@@ -31,7 +41,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 
 from .models import ComplianceRequest, SubmissionData
 from .compliance_rules import (
@@ -42,6 +52,7 @@ from .compliance_rules import (
     ALL_COUNTY_RULES,
     ALL_WADE_RULES,
 )
+from .plat_vision_extractor import extract_from_plat_image
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +65,28 @@ router = APIRouter(prefix="/compliance", tags=["Planning - Compliance Checking"]
 # ------------------------------------------------------------------
 _DEFAULT_SAVE_DIR = Path("/submissions")
 SUBMISSIONS_DIR   = Path(os.getenv("COMPLIANCE_SUBMISSIONS_DIR", str(_DEFAULT_SAVE_DIR)))
+
+# Allowed image types for plat image uploads
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/tiff",
+    "image/bmp",
+    "image/webp",
+}
+
+
+# ==================================================================
+# Dependencies
+# ==================================================================
+
+def get_ollama(request: Request):
+    """
+    FastAPI dependency that returns the shared OllamaClient from app.state.
+    main.py must set app.state.ollama = OllamaClient(...) at startup.
+    """
+    return request.app.state.ollama
 
 
 # ==================================================================
@@ -96,6 +129,36 @@ def _save_submission(req: ComplianceRequest, report: dict) -> Optional[str]:
         return None
 
 
+def _save_plat_image_result(
+    filename: str,
+    jurisdiction: str,
+    submission_type: str,
+    report: dict,
+) -> Optional[str]:
+    """
+    Persist a plat-image compliance result to the VM test folder.
+
+    Folder structure:
+      /submissions/{jurisdiction}/{submission_type}/plat_images/
+          {YYYY-MM-DD_HHMMSS}_{filename}.json
+
+    Returns the saved file path string, or None if saving failed.
+    """
+    try:
+        safe_name = filename.replace(" ", "_").replace("/", "-")
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        folder    = SUBMISSIONS_DIR / jurisdiction / submission_type / "plat_images"
+        folder.mkdir(parents=True, exist_ok=True)
+        file_path = folder / f"{timestamp}_{safe_name}.json"
+
+        file_path.write_text(json.dumps(report, indent=2, default=str))
+        logger.info("Plat image result saved: %s", file_path)
+        return str(file_path)
+    except Exception as exc:
+        logger.warning("Could not save plat image result to disk: %s", exc)
+        return None
+
+
 def _build_response(report: dict, saved_path: Optional[str]) -> dict:
     """Attach metadata (save path) to a completed report."""
     report["_meta"] = {
@@ -106,7 +169,7 @@ def _build_response(report: dict, saved_path: Optional[str]) -> dict:
 
 
 # ==================================================================
-# Endpoints
+# Existing endpoints — unchanged
 # ==================================================================
 
 @router.post(
@@ -408,4 +471,196 @@ def list_saved_submissions(
         "submissions": files,
         "total":       len(files),
         "folder":      str(SUBMISSIONS_DIR),
+    }
+
+
+# ==================================================================
+# NEW — Plat Image Vision Endpoints
+# ==================================================================
+
+@router.post(
+    "/check-plat-image",
+    summary="Upload a plat image → AI extracts fields → full compliance report",
+    response_description=(
+        "Full compliance report generated from vision AI extraction of the plat image, "
+        "plus open-ended planner observations from the vision model."
+    ),
+)
+async def check_plat_image(
+    plat_image: UploadFile = File(
+        ...,
+        description="Scanned or exported plat image (PNG, JPEG, TIFF, BMP, WebP)",
+    ),
+    submission_type: str = Form(
+        ...,
+        description="'preliminary_plan' or 'final_plat'",
+    ),
+    jurisdiction: str = Form(
+        default="county",
+        description="'county' or 'wade' — determines which rule set is applied after extraction",
+    ),
+    vision_model: str = Form(
+        default="llama3.2-vision:11b",
+        description="Ollama vision model tag to use for extraction",
+    ),
+    save: bool = Query(
+        default=True,
+        description="Save the result to the VM submissions folder",
+    ),
+    ollama=Depends(get_ollama),
+) -> dict:
+    """
+    Two-pass AI plat review workflow using the local Ollama vision model:
+
+    **Pass 1 — Structured extraction**
+    The vision model reads the plat image and extracts every observable
+    field (subdivision name, lot count, scale, north arrow, flood zone
+    indicators, easements, cul-de-sac dimensions, certificate blocks,
+    etc.) into a structured JSON object that maps directly to SubmissionData.
+
+    **Pass 2 — Planner observations**
+    A second prompt asks the vision model to act as a senior planner and
+    flag anything suspicious, missing, or unclear that the hard rules
+    cannot capture on their own (e.g. lots that appear landlocked,
+    unlabeled cul-de-sac diameters, tight intersection angles, etc.).
+
+    After both passes the extracted SubmissionData is fed into the correct
+    jurisdiction's compliance rule engine and a complete report is returned.
+
+    **Returns**
+    - All standard compliance report fields (overall_status, summary,
+      failures, warnings, passed, not_applicable)
+    - jurisdiction: which rule set was applied
+    - planner_observations: list of open-ended narrative findings
+    - extracted_fields: raw dict of what the vision model extracted (for audit)
+    - vision_model: which Ollama model was used
+    - source_file: original filename of the uploaded image
+    """
+    # Validate image type
+    if plat_image.content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported file type '{plat_image.content_type}'. "
+                f"Upload a PNG, JPEG, TIFF, BMP, or WebP image."
+            ),
+        )
+
+    # Validate submission type
+    if submission_type not in ("preliminary_plan", "final_plat"):
+        raise HTTPException(
+            status_code=400,
+            detail="submission_type must be 'preliminary_plan' or 'final_plat'.",
+        )
+
+    # Validate jurisdiction
+    if jurisdiction not in ("county", "wade"):
+        raise HTTPException(
+            status_code=400,
+            detail="jurisdiction must be 'county' or 'wade'.",
+        )
+
+    # Read image bytes
+    image_bytes = await plat_image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    logger.info(
+        "Plat image received: filename=%s size=%d bytes submission_type=%s jurisdiction=%s",
+        plat_image.filename,
+        len(image_bytes),
+        submission_type,
+        jurisdiction,
+    )
+
+    # Run vision extraction (Pass 1 structured fields + Pass 2 narrative)
+    try:
+        vision_result = extract_from_plat_image(
+            ollama_client=ollama,
+            image_bytes=image_bytes,
+            submission_type=submission_type,
+            vision_model=vision_model,
+        )
+    except Exception as exc:
+        logger.exception("Vision extraction failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Vision extraction failed: {exc}",
+        )
+
+    # Route to the correct jurisdiction rule set — same logic as manual endpoints
+    submission_data = vision_result["submission_data"]
+    if jurisdiction == "wade":
+        results = run_wade_rules(submission_data)
+    else:
+        results = run_county_rules(submission_data)
+
+    report = build_report(results)
+
+    # Attach vision-specific outputs
+    report["jurisdiction"]         = jurisdiction
+    report["planner_observations"] = vision_result["planner_observations"]
+    report["extracted_fields"]     = vision_result["extracted_fields"]
+    report["vision_model"]         = vision_result["vision_model"]
+    report["source_file"]          = plat_image.filename
+
+    # Save to disk using the plat_images subfolder
+    saved_path = None
+    if save:
+        saved_path = _save_plat_image_result(
+            filename=plat_image.filename or "unknown",
+            jurisdiction=jurisdiction,
+            submission_type=submission_type,
+            report=report,
+        )
+
+    return _build_response(report, saved_path)
+
+
+@router.post(
+    "/check-plat-image/failures-only",
+    summary="Upload a plat image → return only FAIL + WARNING items + planner observations",
+    response_description="Deficiency list generated from vision AI extraction of the plat image.",
+)
+async def check_plat_image_failures(
+    plat_image: UploadFile = File(...),
+    submission_type: str = Form(...),
+    jurisdiction: str = Form(default="county"),
+    vision_model: str = Form(default="llama3.2-vision:11b"),
+    save: bool = Query(default=True),
+    ollama=Depends(get_ollama),
+) -> dict:
+    """
+    Same as **/check-plat-image** but strips out PASS and N/A items.
+
+    Returns only failures, warnings, and planner observations — ideal
+    for generating a deficiency letter or review comment list directly
+    from a scanned plat with no manual data entry.
+    """
+    # Reuse the full endpoint — it handles all validation and vision logic
+    full = await check_plat_image(
+        plat_image=plat_image,
+        submission_type=submission_type,
+        jurisdiction=jurisdiction,
+        vision_model=vision_model,
+        save=save,
+        ollama=ollama,
+    )
+
+    return {
+        "jurisdiction":         full["jurisdiction"],
+        "overall_status":       full["overall_status"],
+        "summary": {
+            "total":           full["summary"]["total"],
+            "fail":            full["summary"]["fail"],
+            "warning":         full["summary"]["warning"],
+            "not_applicable":  full["summary"]["not_applicable"],
+        },
+        "failures":             full["failures"],
+        "warnings":             full["warnings"],
+        "planner_observations": full["planner_observations"],
+        "extracted_fields":     full["extracted_fields"],
+        "vision_model":         full["vision_model"],
+        "source_file":          full["source_file"],
+        "_meta":                full["_meta"],
     }

@@ -68,6 +68,7 @@ app.include_router(planning_router)
 
 store = PolicyStore(root_dir="data/policies")
 ollama = OllamaClient(base_url="http://localhost:11434")
+app.state.ollama = ollama  # Make Ollama client available in app state for processors
 
 
 # =============================================================================

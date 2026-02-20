@@ -603,30 +603,45 @@ async def check_plat_image(
         )
 
     # Route to the correct jurisdiction rule set — same logic as manual endpoints
+    # Route to the correct jurisdiction rule set — same logic as manual endpoints
     submission_data = vision_result["submission_data"]
     if jurisdiction == "wade":
         results = run_wade_rules(submission_data)
     else:
         results = run_county_rules(submission_data)
 
-    # Create session so /chat-plat can reload context on every chat turn
+    report = build_report(results)
+
+    # Attach vision-specific outputs
+    report["jurisdiction"]         = jurisdiction
+    report["planner_observations"] = vision_result["planner_observations"]
+    report["extracted_fields"]     = vision_result["extracted_fields"]
+    report["vision_model"]         = vision_result["vision_model"]
+    report["source_file"]          = plat_image.filename
+
+    # Save to disk using the plat_images subfolder
+    saved_path = None
+    if save:
+        saved_path = _save_plat_image_result(
+            filename=plat_image.filename or "unknown",
+            jurisdiction=jurisdiction,
+            submission_type=submission_type,
+            report=report,
+        )
+
+    # ── Step 0: create server-side session ────────────────────────────────
+    # report MUST be fully built before this block runs.
     session_id = new_session_id()
-    image_ext  = _content_type_to_ext(plat_image.content_type or "image/png")
     try:
         create_session(
-            session_id           = session_id,
-            report               = report,
-            planner_observations = vision_result["planner_observations"],
-            extracted_fields     = vision_result["extracted_fields"],
-            image_bytes          = image_bytes,
-            image_ext            = image_ext,
-            submission_type      = submission_type,
-            jurisdiction         = jurisdiction,
-            source_filename      = plat_image.filename or "unknown",
+            session_id  = session_id,
+            report      = report,
+            image_bytes = image_bytes,
+            filename    = plat_image.filename or "unknown",
         )
-        logger.info("Session created: %s for file: %s", session_id, plat_image.filename)
+        logger.info("Session created: %s", session_id)
     except Exception as exc:
-        logger.error("Session creation failed — chat will be unavailable: %s", exc)
+        logger.warning("Session creation failed (non-fatal): %s", exc)
         session_id = None
 
     response = _build_response(report, saved_path)

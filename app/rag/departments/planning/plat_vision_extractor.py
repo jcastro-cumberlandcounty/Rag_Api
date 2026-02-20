@@ -443,6 +443,7 @@ def extract_from_plat_image(
                     "images": [image_b64],
                 }
             ],
+            format="json",
         )
     except Exception as exc:
         logger.error("Pass 1 vision call failed: %s", exc)
@@ -468,6 +469,7 @@ def extract_from_plat_image(
                     "images": [image_b64],
                 }
             ],
+            format="json",
         )
     except Exception as exc:
         logger.error("Pass 2 vision call failed: %s", exc)

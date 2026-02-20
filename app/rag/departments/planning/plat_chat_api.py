@@ -42,7 +42,7 @@ import logging
 import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from .session_store import load_session, load_session_image, session_exists
@@ -223,7 +223,7 @@ def _image_bytes_to_base64(image_bytes: bytes, ext: str) -> tuple[str, str]:
 )
 async def chat_plat(
     body: ChatRequest,
-    request,  # FastAPI Request for app.state access
+    request: Request,  
 ) -> ChatResponse:
     """
     Ask a natural-language question about a plat review session.

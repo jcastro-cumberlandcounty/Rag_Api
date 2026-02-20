@@ -54,7 +54,7 @@ from .compliance_rules import (
 )
 from .plat_vision_extractor import extract_from_plat_image
 from .session_store import create_session, new_session_id, check_permissions
-from .session_store import create_session, new_session_id
+# from .session_store import create_session, new_session_id
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/compliance", tags=["Planning - Compliance Checking"])
@@ -64,7 +64,8 @@ router = APIRouter(prefix="/compliance", tags=["Planning - Compliance Checking"]
 # Base path can be overridden via the COMPLIANCE_SUBMISSIONS_DIR
 # environment variable (useful when running in a container).
 # ------------------------------------------------------------------
-_DEFAULT_SAVE_DIR = Path("/submissions")
+# _DEFAULT_SAVE_DIR = Path("/submissions")
+_DEFAULT_SAVE_DIR = Path("data/submissions")
 SUBMISSIONS_DIR   = Path(os.getenv("COMPLIANCE_SUBMISSIONS_DIR", str(_DEFAULT_SAVE_DIR)))
 
 # Allowed image types for plat image uploads
@@ -631,22 +632,22 @@ async def check_plat_image(
 
     # ── Step 0: create server-side session ────────────────────────────────
     # report MUST be fully built before this block runs.
-    session_id = new_session_id()
-    try:
-        create_session(
-            session_id  = session_id,
-            report      = report,
-            image_bytes = image_bytes,
-            filename    = plat_image.filename or "unknown",
-        )
-        logger.info("Session created: %s", session_id)
-    except Exception as exc:
-        logger.warning("Session creation failed (non-fatal): %s", exc)
-        session_id = None
+    # session_id = new_session_id()
+    # try:
+    #     create_session(
+    #         session_id  = session_id,
+    #         report      = report,
+    #         image_bytes = image_bytes,
+    #         filename    = plat_image.filename or "unknown",
+    #     )
+    #     logger.info("Session created: %s", session_id)
+    # except Exception as exc:
+    #     logger.warning("Session creation failed (non-fatal): %s", exc)
+    #     session_id = None
 
-    response = _build_response(report, saved_path)
-    response["session_id"] = session_id
-    return response
+    # response = _build_response(report, saved_path)
+    # response["session_id"] = session_id
+    # return response
 
     # Attach vision-specific outputs
     report["jurisdiction"]         = jurisdiction

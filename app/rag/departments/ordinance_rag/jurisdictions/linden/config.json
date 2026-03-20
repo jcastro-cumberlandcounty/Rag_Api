@@ -2,8 +2,11 @@
     "key": "linden",
     "display_name": "Town of Linden",
     "collection_name": "ordinance_linden",
-    "status": "pending",
-    "documents": [],
+    "status": "active",
+    "documents": [
+        "Linden Zoning Ordinance (Revised 8/15/2023)",
+        "Linden Subdivision Ordinance (October 20, 2009)"
+    ],
     "contact": "Cumberland County Planning & Inspections — (910) 678-7600",
-    "notes": "Ordinance documents not yet ingested."
+    "notes": "Incorporated municipality. Linden maintains its own zoning and subdivision ordinances. The Zoning Ordinance was most recently revised August 2023; the Subdivision Ordinance dates to October 2009."
 }

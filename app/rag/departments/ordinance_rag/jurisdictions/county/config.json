@@ -1,0 +1,16 @@
+{
+    "key": "county",
+    "display_name": "Cumberland County",
+    "collection_name": "ordinance_county",
+    "status": "active",
+    "documents": [
+        "Cumberland County Subdivision Ordinance (Revised 8-21-23)",
+        "Cumberland County Zoning Ordinance (Revised 12-15-25)",
+        "Cumberland County Junk Vehicle Ordinance (Revised 4-15-24)",
+        "County - Fayetteville Interlocal Agreement",
+        "Minimum Housing and Abandoned Structures Code (Adopted 9-3-24)",
+        "Water Supply Watershed Management and Protection Ordinance"
+    ],
+    "contact": "Cumberland County Planning & Inspections — (910) 678-7600",
+    "notes": "Covers all unincorporated areas of Cumberland County."
+}

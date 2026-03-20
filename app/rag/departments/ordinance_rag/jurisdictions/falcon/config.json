@@ -1,0 +1,15 @@
+{
+    "key": "falcon",
+    "display_name": "Town of Falcon",
+    "collection_name": "ordinance_falcon",
+    "status": "pending",
+    "documents": [
+        "Complete Zoning Ordinance",
+        "P08-43 Enacting & Creating Provisions for the Conditional Use Districts and Permits (Approved 09/08/2008)",
+        "Complete Subdivision Ordinance",
+        "P07-73 Falcon Subdivision Ordinance (Approved 10/01/2007)",
+        "Falcon Community Standards Ordinance (Approved 08/03/2009)"
+    ],
+    "contact": "Cumberland County Planning & Inspections — (910) 678-7600",
+    "notes": "Ordinance documents not yet ingested."
+}

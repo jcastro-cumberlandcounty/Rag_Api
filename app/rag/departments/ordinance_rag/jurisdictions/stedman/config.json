@@ -2,8 +2,11 @@
     "key": "stedman",
     "display_name": "Town of Stedman",
     "collection_name": "ordinance_stedman",
-    "status": "pending",
-    "documents": [],
+    "status": "active",
+    "documents": [
+        "Stedman Complete Zoning Ordinance",
+        "Stedman Complete Subdivision Ordinance"
+    ],
     "contact": "Cumberland County Planning & Inspections — (910) 678-7600",
-    "notes": "Ordinance documents not yet ingested."
+    "notes": "Incorporated municipality. Stedman maintains its own complete zoning and subdivision ordinances. No adoption dates or amendments are currently on record."
 }

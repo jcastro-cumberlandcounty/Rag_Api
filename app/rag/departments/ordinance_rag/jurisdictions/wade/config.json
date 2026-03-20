@@ -2,8 +2,12 @@
     "key": "wade",
     "display_name": "Town of Wade",
     "collection_name": "ordinance_wade",
-    "status": "pending",
-    "documents": [],
+    "status": "active",
+    "documents": [
+        "Wade Complete Zoning Ordinance (Approved 10/8/2013)",
+        "Wade Complete Subdivision Ordinance (Updated 08/09/2022)",
+        "P09-07 Wade Community Standards Ordinance (Updated 4/22/2013)"
+    ],
     "contact": "Cumberland County Planning & Inspections — (910) 678-7600",
-    "notes": "Ordinance documents not yet ingested. Wade subdivision rules already partially implemented in the plat review compliance engine."
+    "notes": "Incorporated municipality. Wade maintains its own complete zoning, subdivision, and community standards ordinances. The Subdivision Ordinance was updated August 2022 and represents the current controlling document for platting."
 }

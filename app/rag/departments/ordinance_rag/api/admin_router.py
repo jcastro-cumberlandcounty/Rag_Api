@@ -14,14 +14,14 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from app.rag.ollama_client import OllamaClient
-from app.rag.ordinance_rag.api.models import (
+from app.rag.departments.ordinance_rag.api.models import (
     IngestRequest,
     IngestResponse,
     JurisdictionStatus,
     StatusResponse,
 )
-from app.rag.ordinance_rag.core.ingest import ingest_jurisdiction
-from app.rag.ordinance_rag.core.store import collection_exists, get_collection_count
+from app.rag.departments.ordinance_rag.core.ingest import ingest_jurisdiction
+from app.rag.departments.ordinance_rag.core.store import collection_exists, get_collection_count
 
 router = APIRouter(prefix="/ordinances/admin", tags=["Ordinance Admin"])
 

@@ -9,8 +9,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.rag.ollama_client import OllamaClient
-from app.rag.ordinance_rag.api.models import QuestionRequest, QuestionResponse, Citation
-from app.rag.ordinance_rag.core.query import answer_question
+from app.rag.departments.ordinance_rag.api.models import QuestionRequest, QuestionResponse, Citation
+from app.rag.departments.ordinance_rag.core.query import answer_question
 
 router = APIRouter(prefix="/ordinances", tags=["Ordinance RAG"])
 

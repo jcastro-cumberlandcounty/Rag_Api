@@ -36,6 +36,8 @@ from app.rag.pipelines.query_pipeline import answer_question
 # Import Planning
 from app.rag.departments.planning.compliance_api import router as planning_router
 from app.rag.departments.planning.plat_chat_api import router as plat_chat_router
+from app.rag.departments.ordinance_rag.api.ordinance_router import router as ordinance_router
+from app.rag.departments.ordinance_rag.api.admin_router import router as admin_router
 
 # =============================================================================
 # FastAPI App Setup
@@ -61,6 +63,8 @@ app.add_middleware(
 # Register the planning compliance router
 app.include_router(planning_router)
 app.include_router(plat_chat_router)
+app.include_router(ordinance_router)
+app.include_router(admin_router) 
 
 # =============================================================================
 # Initialize Storage and Clients (created once when server starts)

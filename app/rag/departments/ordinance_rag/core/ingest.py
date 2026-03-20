@@ -15,8 +15,9 @@ import re
 from pathlib import Path
 from typing import Generator
 
+import time
 import fitz  # PyMuPDF
-from app.rag.ordinance_rag.core.store import delete_collection, get_collection
+from app.rag.departments.ordinance_rag.core.store import delete_collection, get_collection
 
 # ---------------------------------------------------------------------------
 # Config
@@ -43,11 +44,19 @@ def _load_config(jurisdiction_key: str) -> dict:
 
 
 def _extract_text_from_pdf(pdf_path: Path) -> str:
-    """Extract all text from a PDF using PyMuPDF."""
+    """
+    Extract all text from a PDF using PyMuPDF.
+    Tries 'text' mode first, falls back to 'blocks' if that returns little content.
+    """
     doc = fitz.open(str(pdf_path))
     pages = []
     for page in doc:
+        # Primary extraction
         text = page.get_text("text")
+        if not text.strip():
+            # Fallback: extract from blocks (handles some encoding edge cases)
+            blocks = page.get_text("blocks")
+            text = "\n".join(b[4] for b in blocks if isinstance(b[4], str))
         if text.strip():
             pages.append(text)
     doc.close()
@@ -85,12 +94,31 @@ def _chunk_text(text: str, source: str) -> Generator[dict, None, None]:
         start += CHUNK_SIZE - CHUNK_OVERLAP
 
 
+def _embed_one(text: str, ollama_client, retries: int = 3) -> list[float] | None:
+    """
+    Embed a single text string with retry logic.
+    Returns None if all retries fail.
+    """
+    for attempt in range(retries):
+        try:
+            vector = ollama_client.embed(EMBED_MODEL, text)
+            if vector:
+                return vector
+        except Exception as e:
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)  # 1s, 2s, 4s backoff
+            else:
+                raise e
+    return None
+
+
 def _embed(texts: list[str], ollama_client) -> list[list[float]]:
     """Generate embeddings for a list of text chunks via Ollama."""
     embeddings = []
     for text in texts:
-        result = ollama_client.embed(model=EMBED_MODEL, input=text)
-        embeddings.append(result["embeddings"][0])
+        vector = _embed_one(text, ollama_client)
+        embeddings.append(vector)
+        time.sleep(0.1)  # Small delay to avoid overwhelming Ollama
     return embeddings
 
 
@@ -137,26 +165,56 @@ def ingest_jurisdiction(
         try:
             raw_text = _extract_text_from_pdf(pdf_path)
             clean = _clean_text(raw_text)
+
+            # Skip PDFs with no extractable text (truly scanned/image-based)
+            if not clean or len(clean) < 30:
+                file_results.append({
+                    "file": pdf_path.name,
+                    "status": "skipped",
+                    "reason": "No extractable text — PDF may be scanned/image-based. Consider OCR.",
+                })
+                continue
+
             chunks = list(_chunk_text(clean, source=pdf_path.name))
 
-            texts = [c["text"] for c in chunks]
-            ids = [c["id"] for c in chunks]
-            metadatas = [c["metadata"] for c in chunks]
-            embeddings = _embed(texts, ollama_client)
+            # Embed one at a time with retry — filter out any that fail
+            valid_ids, valid_texts, valid_metadatas, valid_embeddings = [], [], [], []
+            failed = 0
+            for chunk in chunks:
+                try:
+                    vector = _embed_one(chunk["text"], ollama_client)
+                    if vector:
+                        valid_ids.append(chunk["id"])
+                        valid_texts.append(chunk["text"])
+                        valid_metadatas.append(chunk["metadata"])
+                        valid_embeddings.append(vector)
+                    else:
+                        failed += 1
+                except Exception:
+                    failed += 1
 
-            # Upsert so re-runs are safe
+            if not valid_embeddings:
+                file_results.append({
+                    "file": pdf_path.name,
+                    "status": "error",
+                    "error": "All chunks failed to embed.",
+                })
+                continue
+
+            # Upsert only the valid chunks
             collection.upsert(
-                ids=ids,
-                documents=texts,
-                embeddings=embeddings,
-                metadatas=metadatas,
+                ids=valid_ids,
+                documents=valid_texts,
+                embeddings=valid_embeddings,
+                metadatas=valid_metadatas,
             )
 
-            total_chunks += len(chunks)
+            total_chunks += len(valid_embeddings)
             file_results.append({
                 "file": pdf_path.name,
                 "status": "ok",
-                "chunks": len(chunks),
+                "chunks": len(valid_embeddings),
+                "failed_chunks": failed,
             })
 
         except Exception as e:

@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.rag.ordinance_rag.core.store import get_collection, collection_exists
-from app.rag.ordinance_rag.core.scope_guard import is_in_scope, get_refusal_message
+from app.rag.departments.ordinance_rag.core.store import get_collection, collection_exists
+from app.rag.departments.ordinance_rag.core.scope_guard import is_in_scope, get_refusal_message
 
 JURISDICTIONS_DIR = Path(__file__).resolve().parents[1] / "jurisdictions"
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
@@ -64,8 +64,7 @@ def _load_system_prompt(jurisdiction_key: str, config: dict) -> str:
 
 
 def _embed_query(question: str, ollama_client) -> list[float]:
-    result = ollama_client.embed(model=EMBED_MODEL, input=question)
-    return result["embeddings"][0]
+    return ollama_client.embed(EMBED_MODEL, question)
 
 
 def _retrieve(question_embedding: list[float], collection_name: str) -> list[dict]:
@@ -114,14 +113,11 @@ def _generate_answer(
         f"--- End of Excerpts ---\n\n"
         f"Question: {question}"
     )
-    response = ollama_client.chat(
-        model=ANSWER_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-    )
-    return response["message"]["content"]
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message},
+    ]
+    return ollama_client.chat(model=ANSWER_MODEL, messages=messages)
 
 
 # ---------------------------------------------------------------------------

@@ -38,12 +38,14 @@ class OllamaClient:
 
         return emb
 
-    def chat(self, model: str, messages: list[dict]) -> str:
+    def chat(self, model: str, messages: list[dict], format: str | None = None, stream: bool = False) -> str:
         """
         Chat with an LLM using Ollama's /api/chat endpoint.
         """
         url = f"{self.base_url}/api/chat"
-        payload = {"model": model, "messages": messages, "stream": False}
+        payload = {"model": model, "messages": messages, "stream": stream}
+        if format:
+            payload["format"] = format
 
         with httpx.Client(timeout=self.timeout) as client:
             resp = client.post(url, json=payload)

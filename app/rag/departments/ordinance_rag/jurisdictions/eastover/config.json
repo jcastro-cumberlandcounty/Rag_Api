@@ -1,9 +1,14 @@
 {
-  "key": "eastover",
-  "display_name": "Town of Eastover",
-  "collection_name": "ordinance_eastover",
-  "status": "pending",
-  "documents": [],
-  "contact": "Cumberland County Planning & Inspections — (910) 678-7600",
-  "notes": "Ordinance documents not yet ingested."
+    "key": "eastover",
+    "display_name": "Town of Eastover",
+    "collection_name": "ordinance_eastover",
+    "status": "active",
+    "documents": [
+        "Eastover Article VIII.I Overlay Districts (August 12 2025 Amendment)",
+        "P13-15 E Zoning Code Sec. 403 Text Amendment",
+        "Eastover Commercial Overlay (Revised 7/11/23)",
+        "Eastover Commercial Core Overlay Map (Revised 11/18/21)"
+    ],
+    "contact": "Cumberland County Planning & Inspections — (910) 678-7600",
+    "notes": "Incorporated municipality. Eastover adopts Cumberland County's base zoning ordinance with local overlay amendments specific to commercial and mixed-use districts."
 }
